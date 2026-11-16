@@ -10,6 +10,11 @@
 // SDL_Window, and its HWND is the SDL_Window pointer. SDL events become the
 // matching window messages, which DispatchMessageA hands to the window
 // procedure of the window's class.
+//
+// Screen coordinates are the client coordinates of the window under the
+// mouse (or of the first window): miniwin's primary surface is the window's
+// client area, so ClientToScreen leaves a point unchanged, and the cursor
+// calls and a message's pt follow it.
 
 namespace {
 
@@ -38,6 +43,26 @@ SDL_Window* WindowOf(SDL_WindowID id)
 	return SDL_GetWindowFromID(id);
 }
 
+// The window whose client area the screen coordinates are.
+SDL_Window* CursorWindow()
+{
+	if (SDL_Window* window = SDL_GetMouseFocus()) {
+		return window;
+	}
+	if (SDL_Window* window = SDL_GetKeyboardFocus()) {
+		return window;
+	}
+	return WindowProcedures().empty() ? nullptr : WindowProcedures().begin()->first;
+}
+
+POINT CursorPosition()
+{
+	float x = 0.0f;
+	float y = 0.0f;
+	SDL_GetMouseState(&x, &y);
+	return POINT{(LONG) x, (LONG) y};
+}
+
 void Post(SDL_Window* window, UINT message, WPARAM wParam, LPARAM lParam)
 {
 	MSG msg = {};
@@ -46,11 +71,7 @@ void Post(SDL_Window* window, UINT message, WPARAM wParam, LPARAM lParam)
 	msg.wParam = wParam;
 	msg.lParam = lParam;
 	msg.time = (DWORD) SDL_GetTicks();
-	float x = 0.0f;
-	float y = 0.0f;
-	SDL_GetGlobalMouseState(&x, &y);
-	msg.pt.x = (LONG) x;
-	msg.pt.y = (LONG) y;
+	msg.pt = CursorPosition();
 	PostedMessages().push_back(msg);
 }
 
@@ -366,29 +387,24 @@ HCURSOR SetCursor(HCURSOR hCursor)
 
 BOOL GetCursorPos(LPPOINT lpPoint)
 {
-	float x = 0.0f;
-	float y = 0.0f;
-	SDL_GetGlobalMouseState(&x, &y);
-	lpPoint->x = (LONG) x;
-	lpPoint->y = (LONG) y;
+	*lpPoint = CursorPosition();
 	return TRUE;
 }
 
 BOOL SetCursorPos(int X, int Y)
 {
-	return SDL_WarpMouseGlobal((float) X, (float) Y);
+	SDL_Window* window = CursorWindow();
+	if (!window) {
+		return FALSE;
+	}
+	SDL_WarpMouseInWindow(window, (float) X, (float) Y);
+	return TRUE;
 }
 
 BOOL ScreenToClient(HWND hWnd, LPPOINT lpPoint)
 {
-	int x = 0;
-	int y = 0;
-	if (!SDL_GetWindowPosition(reinterpret_cast<SDL_Window*>(hWnd), &x, &y)) {
-		return FALSE;
-	}
-	lpPoint->x -= x;
-	lpPoint->y -= y;
-	return TRUE;
+	// The inverse of ClientToScreen: screen coordinates are client coordinates.
+	return hWnd != NULL;
 }
 
 int MessageBoxA(HWND hWnd, LPCSTR lpText, LPCSTR lpCaption, UINT uType)
