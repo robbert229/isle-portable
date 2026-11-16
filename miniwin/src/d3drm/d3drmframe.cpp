@@ -3,9 +3,23 @@
 #include "d3drmlight_impl.h"
 #include "d3drmtexture_impl.h"
 #include "d3drmvisual_impl.h"
+#include "mathutils.h"
 #include "miniwin.h"
 
 #include <cstring>
+
+// out = a * b (row vectors); out may alias neither input.
+static void MatrixMultiply(D3DRMMATRIX4D out, const D3DRMMATRIX4D a, const D3DRMMATRIX4D b)
+{
+	for (int row = 0; row < 4; ++row) {
+		for (int col = 0; col < 4; ++col) {
+			out[row][col] = 0.0f;
+			for (int k = 0; k < 4; ++k) {
+				out[row][col] += a[row][k] * b[k][col];
+			}
+		}
+	}
+}
 
 Direct3DRMFrameImpl::Direct3DRMFrameImpl(Direct3DRMFrameImpl* parent)
 {
@@ -96,25 +110,84 @@ HRESULT Direct3DRMFrameImpl::GetLights(IDirect3DRMLightArray** lightArray)
 
 HRESULT Direct3DRMFrameImpl::AddTransform(D3DRMCOMBINETYPE combine, D3DRMMATRIX4D matrix)
 {
+	D3DRMMATRIX4D result;
 	switch (combine) {
 	case D3DRMCOMBINETYPE::REPLACE:
 		std::memcpy(m_transform, matrix, sizeof(m_transform));
 		return DD_OK;
+	case D3DRMCOMBINETYPE::BEFORE:
+		MatrixMultiply(result, matrix, m_transform);
+		break;
+	case D3DRMCOMBINETYPE::AFTER:
+		MatrixMultiply(result, m_transform, matrix);
+		break;
 	default:
-		MINIWIN_NOT_IMPLEMENTED();
-		return DDERR_GENERIC;
+		return DDERR_INVALIDPARAMS;
+	}
+	std::memcpy(m_transform, result, sizeof(m_transform));
+	return DD_OK;
+}
+
+void Direct3DRMFrameImpl::GetWorldTransform(D3DRMMATRIX4D out)
+{
+	std::memcpy(out, m_transform, sizeof(m_transform));
+	for (Direct3DRMFrameImpl* frame = m_parent; frame; frame = frame->m_parent) {
+		D3DRMMATRIX4D tmp;
+		MatrixMultiply(tmp, out, frame->m_transform);
+		std::memcpy(out, tmp, sizeof(tmp));
+	}
+}
+
+void Direct3DRMFrameImpl::GetTransformTo(IDirect3DRMFrame* reference, D3DRMMATRIX4D out)
+{
+	GetWorldTransform(out);
+	if (reference) {
+		D3DRMMATRIX4D referenceWorld, worldToReference, tmp;
+		static_cast<Direct3DRMFrameImpl*>(reference)->GetWorldTransform(referenceWorld);
+		InvertAffineMatrix(worldToReference, referenceWorld);
+		MatrixMultiply(tmp, out, worldToReference);
+		std::memcpy(out, tmp, sizeof(tmp));
+	}
+}
+
+void Direct3DRMFrameImpl::SetTransformFrom(IDirect3DRMFrame* reference, const D3DRMMATRIX4D toReference)
+{
+	// local = toReference * referenceWorld * inverse(parentWorld)
+	D3DRMMATRIX4D world, tmp;
+	if (reference) {
+		D3DRMMATRIX4D referenceWorld;
+		static_cast<Direct3DRMFrameImpl*>(reference)->GetWorldTransform(referenceWorld);
+		MatrixMultiply(world, toReference, referenceWorld);
+	}
+	else {
+		std::memcpy(world, toReference, sizeof(world));
+	}
+	if (m_parent) {
+		D3DRMMATRIX4D parentWorld, worldToParent;
+		m_parent->GetWorldTransform(parentWorld);
+		InvertAffineMatrix(worldToParent, parentWorld);
+		MatrixMultiply(tmp, world, worldToParent);
+		std::memcpy(m_transform, tmp, sizeof(tmp));
+	}
+	else {
+		std::memcpy(m_transform, world, sizeof(world));
 	}
 }
 
 HRESULT Direct3DRMFrameImpl::GetPosition(IDirect3DRMFrame* reference, D3DVECTOR* position)
 {
-	if (reference) {
-		MINIWIN_NOT_IMPLEMENTED();
-		return DDERR_GENERIC;
+	if (!reference) {
+		// Relative to the parent, as miniwin has always reported it.
+		position->x = m_transform[3][0] / m_transform[3][3];
+		position->y = m_transform[3][1] / m_transform[3][3];
+		position->z = m_transform[3][2] / m_transform[3][3];
+		return DD_OK;
 	}
-	position->x = m_transform[3][0] / m_transform[3][3];
-	position->y = m_transform[3][1] / m_transform[3][3];
-	position->z = m_transform[3][2] / m_transform[3][3];
+	D3DRMMATRIX4D toReference;
+	GetTransformTo(reference, toReference);
+	position->x = toReference[3][0];
+	position->y = toReference[3][1];
+	position->z = toReference[3][2];
 	return DD_OK;
 }
 
@@ -202,27 +275,56 @@ HRESULT Direct3DRMFrameImpl::DeleteChild(IDirect3DRMFrame3* child)
 	return DeleteChild(static_cast<IDirect3DRMFrame*>(child));
 }
 
+// The IDirect3DRMFrame3 entry points take a null reference as the scene
+// (world space).
 HRESULT Direct3DRMFrameImpl::GetPosition(IDirect3DRMFrame3* reference, D3DVECTOR* position)
 {
-	return GetPosition(static_cast<IDirect3DRMFrame*>(reference), position);
+	D3DRMMATRIX4D toReference;
+	GetTransformTo(static_cast<IDirect3DRMFrame*>(reference), toReference);
+	position->x = toReference[3][0];
+	position->y = toReference[3][1];
+	position->z = toReference[3][2];
+	return DD_OK;
 }
 
 HRESULT Direct3DRMFrameImpl::AddTranslation(D3DRMCOMBINETYPE combine, D3DVALUE x, D3DVALUE y, D3DVALUE z)
 {
-	MINIWIN_NOT_IMPLEMENTED();
-	return E_NOTIMPL;
+	D3DRMMATRIX4D matrix;
+	IdentityMatrix(matrix);
+	matrix[3][0] = x;
+	matrix[3][1] = y;
+	matrix[3][2] = z;
+	return AddTransform(combine, matrix);
 }
 
 HRESULT Direct3DRMFrameImpl::AddScale(D3DRMCOMBINETYPE combine, D3DVALUE sx, D3DVALUE sy, D3DVALUE sz)
 {
-	MINIWIN_NOT_IMPLEMENTED();
-	return E_NOTIMPL;
+	D3DRMMATRIX4D matrix;
+	IdentityMatrix(matrix);
+	matrix[0][0] = sx;
+	matrix[1][1] = sy;
+	matrix[2][2] = sz;
+	return AddTransform(combine, matrix);
 }
 
 HRESULT Direct3DRMFrameImpl::AddRotation(D3DRMCOMBINETYPE combine, D3DVALUE x, D3DVALUE y, D3DVALUE z, D3DVALUE theta)
 {
-	MINIWIN_NOT_IMPLEMENTED();
-	return E_NOTIMPL;
+	D3DVECTOR axis = Normalize({x, y, z});
+	float s = sinf(theta);
+	float c = cosf(theta);
+	float t = 1.0f - c;
+	D3DRMMATRIX4D matrix;
+	IdentityMatrix(matrix);
+	matrix[0][0] = t * axis.x * axis.x + c;
+	matrix[0][1] = t * axis.x * axis.y + s * axis.z;
+	matrix[0][2] = t * axis.x * axis.z - s * axis.y;
+	matrix[1][0] = t * axis.y * axis.x - s * axis.z;
+	matrix[1][1] = t * axis.y * axis.y + c;
+	matrix[1][2] = t * axis.y * axis.z + s * axis.x;
+	matrix[2][0] = t * axis.z * axis.x + s * axis.y;
+	matrix[2][1] = t * axis.z * axis.y - s * axis.x;
+	matrix[2][2] = t * axis.z * axis.z + c;
+	return AddTransform(combine, matrix);
 }
 
 HRESULT Direct3DRMFrameImpl::AddVisual(IUnknown* visual)
@@ -233,26 +335,47 @@ HRESULT Direct3DRMFrameImpl::AddVisual(IUnknown* visual)
 
 HRESULT Direct3DRMFrameImpl::GetParent(IDirect3DRMFrame3** parent)
 {
-	MINIWIN_NOT_IMPLEMENTED();
-	return E_NOTIMPL;
+	if (!parent) {
+		return DDERR_INVALIDPARAMS;
+	}
+	*parent = m_parent;
+	if (m_parent) {
+		m_parent->AddRef();
+	}
+	return DD_OK;
 }
 
 HRESULT Direct3DRMFrameImpl::GetScene(IDirect3DRMFrame3** scene)
 {
-	MINIWIN_NOT_IMPLEMENTED();
-	return E_NOTIMPL;
+	if (!scene) {
+		return DDERR_INVALIDPARAMS;
+	}
+	Direct3DRMFrameImpl* root = this;
+	while (root->m_parent) {
+		root = root->m_parent;
+	}
+	root->AddRef();
+	*scene = root;
+	return DD_OK;
 }
 
 HRESULT Direct3DRMFrameImpl::GetTransform(IDirect3DRMFrame3* reference, D3DRMMATRIX4D matrix)
 {
-	MINIWIN_NOT_IMPLEMENTED();
-	return E_NOTIMPL;
+	GetTransformTo(static_cast<IDirect3DRMFrame*>(reference), matrix);
+	return DD_OK;
 }
 
 HRESULT Direct3DRMFrameImpl::GetOrientation(IDirect3DRMFrame3* reference, D3DVECTOR* dir, D3DVECTOR* up)
 {
-	MINIWIN_NOT_IMPLEMENTED();
-	return E_NOTIMPL;
+	D3DRMMATRIX4D toReference;
+	GetTransformTo(static_cast<IDirect3DRMFrame*>(reference), toReference);
+	if (dir) {
+		*dir = Normalize({toReference[2][0], toReference[2][1], toReference[2][2]});
+	}
+	if (up) {
+		*up = Normalize({toReference[1][0], toReference[1][1], toReference[1][2]});
+	}
+	return DD_OK;
 }
 
 HRESULT Direct3DRMFrameImpl::GetVisuals(DWORD* count, IUnknown** visuals)
@@ -263,8 +386,11 @@ HRESULT Direct3DRMFrameImpl::GetVisuals(DWORD* count, IUnknown** visuals)
 
 HRESULT Direct3DRMFrameImpl::InverseTransform(D3DVECTOR* d, D3DVECTOR* s)
 {
-	MINIWIN_NOT_IMPLEMENTED();
-	return E_NOTIMPL;
+	D3DRMMATRIX4D world, inverse;
+	GetWorldTransform(world);
+	InvertAffineMatrix(inverse, world);
+	*d = TransformPoint(*s, inverse);
+	return DD_OK;
 }
 
 HRESULT Direct3DRMFrameImpl::Load(
@@ -297,38 +423,41 @@ HRESULT Direct3DRMFrameImpl::DeleteVisual(IUnknown* visual)
 
 D3DCOLOR Direct3DRMFrameImpl::GetSceneBackground()
 {
-	MINIWIN_NOT_IMPLEMENTED();
-	return 0;
+	return m_backgroundColor;
 }
 
 HRESULT Direct3DRMFrameImpl::SetSceneBackground(D3DCOLOR color)
 {
-	MINIWIN_NOT_IMPLEMENTED();
-	return E_NOTIMPL;
+	m_backgroundColor = color;
+	return DD_OK;
 }
 
+// The fog state is kept for the frame's getters; the renderers do not draw
+// fog yet.
 HRESULT Direct3DRMFrameImpl::SetSceneFogEnable(BOOL enable)
 {
-	MINIWIN_NOT_IMPLEMENTED();
-	return E_NOTIMPL;
+	m_fogEnable = enable;
+	return DD_OK;
 }
 
 HRESULT Direct3DRMFrameImpl::SetSceneFogColor(D3DCOLOR color)
 {
-	MINIWIN_NOT_IMPLEMENTED();
-	return E_NOTIMPL;
+	m_fogColor = color;
+	return DD_OK;
 }
 
 HRESULT Direct3DRMFrameImpl::SetSceneFogMode(D3DRMFOGMODE mode)
 {
-	MINIWIN_NOT_IMPLEMENTED();
-	return E_NOTIMPL;
+	m_fogMode = mode;
+	return DD_OK;
 }
 
 HRESULT Direct3DRMFrameImpl::SetSceneFogParams(D3DVALUE start, D3DVALUE end, D3DVALUE density)
 {
-	MINIWIN_NOT_IMPLEMENTED();
-	return E_NOTIMPL;
+	m_fogStart = start;
+	m_fogEnd = end;
+	m_fogDensity = density;
+	return DD_OK;
 }
 
 HRESULT Direct3DRMFrameImpl::SetOrientation(
@@ -341,30 +470,54 @@ HRESULT Direct3DRMFrameImpl::SetOrientation(
 	D3DVALUE uz
 )
 {
-	MINIWIN_NOT_IMPLEMENTED();
-	return E_NOTIMPL;
+	// The new axes, in the reference frame: z along dir, y as close to up as
+	// is perpendicular to it, x = y x z (left-handed).
+	D3DVECTOR dir = Normalize({dx, dy, dz});
+	D3DVECTOR right = Normalize(CrossProduct({ux, uy, uz}, dir));
+	D3DVECTOR up = CrossProduct(dir, right);
+	if (DotProduct(dir, dir) == 0.0f || DotProduct(right, right) == 0.0f) {
+		return DDERR_INVALIDPARAMS;
+	}
+
+	D3DRMMATRIX4D toReference;
+	GetTransformTo(static_cast<IDirect3DRMFrame*>(reference), toReference);
+	D3DVECTOR axes[3] = {right, up, dir};
+	for (int row = 0; row < 3; ++row) {
+		toReference[row][0] = axes[row].x;
+		toReference[row][1] = axes[row].y;
+		toReference[row][2] = axes[row].z;
+	}
+	SetTransformFrom(static_cast<IDirect3DRMFrame*>(reference), toReference);
+	return DD_OK;
 }
 
 HRESULT Direct3DRMFrameImpl::SetPosition(IDirect3DRMFrame3* reference, D3DVALUE x, D3DVALUE y, D3DVALUE z)
 {
-	MINIWIN_NOT_IMPLEMENTED();
-	return E_NOTIMPL;
+	D3DRMMATRIX4D toReference;
+	GetTransformTo(static_cast<IDirect3DRMFrame*>(reference), toReference);
+	toReference[3][0] = x;
+	toReference[3][1] = y;
+	toReference[3][2] = z;
+	SetTransformFrom(static_cast<IDirect3DRMFrame*>(reference), toReference);
+	return DD_OK;
 }
 
 HRESULT Direct3DRMFrameImpl::SetSortMode(D3DRMSORTMODE mode)
 {
-	MINIWIN_NOT_IMPLEMENTED();
-	return E_NOTIMPL;
+	m_sortMode = mode;
+	return DD_OK;
 }
 
 HRESULT Direct3DRMFrameImpl::Transform(D3DVECTOR* d, D3DVECTOR* s)
 {
-	MINIWIN_NOT_IMPLEMENTED();
-	return E_NOTIMPL;
+	D3DRMMATRIX4D world;
+	GetWorldTransform(world);
+	*d = TransformPoint(*s, world);
+	return DD_OK;
 }
 
 HRESULT Direct3DRMFrameImpl::SetSceneFogMethod(DWORD flags)
 {
-	MINIWIN_NOT_IMPLEMENTED();
-	return E_NOTIMPL;
+	m_fogMethod = flags;
+	return DD_OK;
 }

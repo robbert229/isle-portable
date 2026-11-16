@@ -55,3 +55,51 @@ inline void MultiplyMatrix(D3DRMMATRIX4D& out, const D3DRMMATRIX4D& a, const D3D
 		}
 	}
 }
+
+inline void IdentityMatrix(D3DRMMATRIX4D out)
+{
+	for (int row = 0; row < 4; ++row) {
+		for (int col = 0; col < 4; ++col) {
+			out[row][col] = row == col ? 1.0f : 0.0f;
+		}
+	}
+}
+
+// Inverse of an affine row-vector matrix (last column 0, 0, 0, 1). Returns
+// false and the identity for a singular matrix.
+inline bool InvertAffineMatrix(D3DRMMATRIX4D out, const D3DRMMATRIX4D m)
+{
+	float c00 = m[1][1] * m[2][2] - m[1][2] * m[2][1];
+	float c01 = m[1][2] * m[2][0] - m[1][0] * m[2][2];
+	float c02 = m[1][0] * m[2][1] - m[1][1] * m[2][0];
+	float det = m[0][0] * c00 + m[0][1] * c01 + m[0][2] * c02;
+	if (fabsf(det) < 1e-12f) {
+		IdentityMatrix(out);
+		return false;
+	}
+	float inv = 1.0f / det;
+	out[0][0] = c00 * inv;
+	out[0][1] = (m[0][2] * m[2][1] - m[0][1] * m[2][2]) * inv;
+	out[0][2] = (m[0][1] * m[1][2] - m[0][2] * m[1][1]) * inv;
+	out[1][0] = c01 * inv;
+	out[1][1] = (m[0][0] * m[2][2] - m[0][2] * m[2][0]) * inv;
+	out[1][2] = (m[0][2] * m[1][0] - m[0][0] * m[1][2]) * inv;
+	out[2][0] = c02 * inv;
+	out[2][1] = (m[0][1] * m[2][0] - m[0][0] * m[2][1]) * inv;
+	out[2][2] = (m[0][0] * m[1][1] - m[0][1] * m[1][0]) * inv;
+	for (int col = 0; col < 3; ++col) {
+		out[3][col] = -(m[3][0] * out[0][col] + m[3][1] * out[1][col] + m[3][2] * out[2][col]);
+		out[col][3] = 0.0f;
+	}
+	out[3][3] = 1.0f;
+	return true;
+}
+
+inline D3DVECTOR TransformDirection(const D3DVECTOR& v, const D3DRMMATRIX4D m)
+{
+	return {
+		v.x * m[0][0] + v.y * m[1][0] + v.z * m[2][0],
+		v.x * m[0][1] + v.y * m[1][1] + v.z * m[2][1],
+		v.x * m[0][2] + v.y * m[1][2] + v.z * m[2][2]
+	};
+}

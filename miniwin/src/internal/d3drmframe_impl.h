@@ -66,6 +66,15 @@ struct Direct3DRMFrameImpl : public Direct3DRMObjectBaseImpl<IDirect3DRMFrame3> 
 	HRESULT Transform(D3DVECTOR* d, D3DVECTOR* s) override;
 	HRESULT SetSceneFogMethod(DWORD flags) override;
 
+	// Local-to-world (row vectors: world = local * parent's world).
+	void GetWorldTransform(D3DRMMATRIX4D out);
+	// This frame's local-to-reference transform; a null reference is the
+	// scene (world space).
+	void GetTransformTo(IDirect3DRMFrame* reference, D3DRMMATRIX4D out);
+	// Replaces the local transform so that the frame's transform relative to
+	// `reference` becomes `toReference`.
+	void SetTransformFrom(IDirect3DRMFrame* reference, const D3DRMMATRIX4D toReference);
+
 	Direct3DRMFrameImpl* m_parent{};
 	D3DRMMATRIX4D m_transform =
 		{{1.f, 0.f, 0.f, 0.f}, {0.f, 1.f, 0.f, 0.f}, {0.f, 0.f, 1.f, 0.f}, {0.f, 0.f, 0.f, 1.f}};
@@ -77,6 +86,14 @@ private:
 	Direct3DRMTextureImpl* m_texture{};
 
 	D3DCOLOR m_backgroundColor = 0xFF000000;
+	D3DRMSORTMODE m_sortMode = D3DRMSORTMODE::FROMPARENT;
+	BOOL m_fogEnable = FALSE;
+	D3DCOLOR m_fogColor = 0;
+	D3DRMFOGMODE m_fogMode{};
+	D3DVALUE m_fogStart = 0.0f;
+	D3DVALUE m_fogEnd = 0.0f;
+	D3DVALUE m_fogDensity = 0.0f;
+	DWORD m_fogMethod = 0;
 	D3DCOLOR m_color = 0xffffff;
 
 	friend class Direct3DRMViewportImpl;
