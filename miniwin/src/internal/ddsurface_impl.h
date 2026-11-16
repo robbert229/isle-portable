@@ -1,9 +1,10 @@
 #pragma once
 
 #include <SDL3/SDL.h>
+#include <miniwin/d3d.h>
 #include <miniwin/ddraw.h>
 
-struct DirectDrawSurfaceImpl : public IDirectDrawSurface4 {
+struct DirectDrawSurfaceImpl : public IDirectDrawSurface4, public IDirect3DTexture2 {
 	DirectDrawSurfaceImpl(int width, int height, SDL_PixelFormat format);
 	~DirectDrawSurfaceImpl() override;
 
@@ -47,6 +48,8 @@ struct DirectDrawSurfaceImpl : public IDirectDrawSurface4 {
 	HRESULT GetSurfaceDesc(LPDDSURFACEDESC2 lpDDSurfaceDesc) override;
 	HRESULT Lock(LPRECT lpDestRect, LPDDSURFACEDESC2 lpDDSurfaceDesc, DDLockFlags dwFlags, HANDLE hEvent) override;
 	HRESULT Unlock(LPRECT lpRect) override;
+	// IDirect3DTexture2 interface
+	HRESULT GetHandle(IDirect3DDevice2* device, LPD3DTEXTUREHANDLE handle) override;
 
 	IDirect3DRMTexture2* ToTexture();
 

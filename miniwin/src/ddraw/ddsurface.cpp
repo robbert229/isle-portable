@@ -43,6 +43,11 @@ HRESULT DirectDrawSurfaceImpl::QueryInterface(const GUID& riid, void** ppvObject
 		*ppvObject = static_cast<IDirectDrawSurface4*>(this);
 		return S_OK;
 	}
+	if (SDL_memcmp(&riid, &IID_IDirect3DTexture2, sizeof(GUID)) == 0) {
+		this->IUnknown::AddRef();
+		*ppvObject = static_cast<IDirect3DTexture2*>(this);
+		return S_OK;
+	}
 	SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "DirectDrawSurfaceImpl does not implement guid");
 	return E_NOINTERFACE;
 }
@@ -312,6 +317,13 @@ HRESULT DirectDrawSurfaceImpl::Lock(
 }
 
 HRESULT DirectDrawSurfaceImpl::Unlock(LPRECT lpRect)
+{
+	MINIWIN_NOT_IMPLEMENTED();
+	return DDERR_UNSUPPORTED;
+}
+
+// IDirect3DTexture2 interface
+HRESULT DirectDrawSurfaceImpl::GetHandle(IDirect3DDevice2* device, LPD3DTEXTUREHANDLE handle)
 {
 	MINIWIN_NOT_IMPLEMENTED();
 	return DDERR_UNSUPPORTED;

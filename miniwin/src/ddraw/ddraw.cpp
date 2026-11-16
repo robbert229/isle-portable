@@ -1,6 +1,7 @@
 
 #include "d3drmrenderer.h"
 #include "ddpalette_impl.h"
+#include "d3dmaterial_impl.h"
 #include "ddraw_impl.h"
 #include "ddsurface_impl.h"
 #include "dummysurface_impl.h"
@@ -37,6 +38,11 @@ HRESULT DirectDrawImpl::QueryInterface(const GUID& riid, void** ppvObject)
 	if (SDL_memcmp(&riid, &IID_IDirect3D2, sizeof(GUID)) == 0) {
 		this->IUnknown::AddRef();
 		*ppvObject = static_cast<IDirect3D2*>(this);
+		return S_OK;
+	}
+	if (SDL_memcmp(&riid, &IID_IDirect3D3, sizeof(GUID)) == 0) {
+		this->IUnknown::AddRef();
+		*ppvObject = static_cast<IDirect3D3*>(this);
 		return S_OK;
 	}
 	if (SDL_memcmp(&riid, &IID_IDirect3DMiniwin, sizeof(GUID)) == 0) {
@@ -378,6 +384,15 @@ HRESULT DirectDrawImpl::CreateDevice(
 		return E_NOINTERFACE;
 	}
 	*ppDirect3DDevice = static_cast<IDirect3DDevice2*>(DDRenderer);
+	return DD_OK;
+}
+
+HRESULT DirectDrawImpl::CreateMaterial(IDirect3DMaterial3** material, IUnknown* outer)
+{
+	if (!material) {
+		return DDERR_INVALIDPARAMS;
+	}
+	*material = static_cast<IDirect3DMaterial3*>(new Direct3DMaterialImpl);
 	return DD_OK;
 }
 

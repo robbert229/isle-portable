@@ -28,9 +28,35 @@ struct Plane {
 	float d;
 };
 
-class Direct3DRMRenderer : public IDirect3DDevice2 {
+class Direct3DRMRenderer : public IDirect3DDevice3 {
 public:
 	~Direct3DRMRenderer() override;
+	// IUnknown interface
+	HRESULT QueryInterface(const GUID& riid, void** ppvObject) override;
+	// IDirect3DDevice3 interface
+	HRESULT GetDirect3D(IDirect3D3** d3d) override;
+	HRESULT SetCurrentViewport(IDirect3DViewport3* viewport) override;
+	HRESULT GetRenderState(D3DRENDERSTATETYPE state, LPDWORD value) override;
+	HRESULT SetRenderState(D3DRENDERSTATETYPE state, DWORD value) override;
+	HRESULT GetLightState(D3DLIGHTSTATETYPE state, LPDWORD value) override;
+	HRESULT SetLightState(D3DLIGHTSTATETYPE state, DWORD value) override;
+	HRESULT SetTransform(D3DTRANSFORMSTATETYPE state, LPD3DMATRIX matrix) override;
+	HRESULT GetTransform(D3DTRANSFORMSTATETYPE state, LPD3DMATRIX matrix) override;
+	HRESULT DrawIndexedPrimitive(
+		D3DPRIMITIVETYPE primitiveType,
+		DWORD vertexType,
+		LPVOID vertices,
+		DWORD vertexCount,
+		WORD* indices,
+		DWORD indexCount,
+		DWORD flags
+	) override;
+	HRESULT GetTexture(DWORD stage, IDirect3DTexture2** texture) override;
+	HRESULT SetTexture(DWORD stage, IDirect3DTexture2* texture) override;
+	HRESULT GetTextureStageState(DWORD stage, D3DTEXTURESTAGESTATETYPE state, LPDWORD value) override;
+	HRESULT SetTextureStageState(DWORD stage, D3DTEXTURESTAGESTATETYPE state, DWORD value) override;
+
+	// Direct3DRMRenderer interface
 	virtual void PushLights(const SceneLight* vertices, size_t count) = 0;
 	virtual void SetProjection(const D3DRMMATRIX4D& projection, D3DVALUE front, D3DVALUE back) = 0;
 	virtual void SetFrustumPlanes(const Plane* frustumPlanes) = 0;

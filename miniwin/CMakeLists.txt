@@ -11,6 +11,10 @@ add_library(miniwin STATIC EXCLUDE_FROM_ALL
   src/ddraw/ddsurface.cpp
   src/ddraw/framebuffer.cpp
 
+  # D3D
+  src/d3d/d3dmaterial.cpp
+  src/d3d/d3dviewport.cpp
+
   # D3DRM
   src/d3drm/d3drm.cpp
   src/d3drm/d3drmdevice.cpp

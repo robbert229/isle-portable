@@ -16,7 +16,7 @@ inline static SDL_Rect ConvertRect(const RECT* r)
 	return {r->left, r->top, r->right - r->left, r->bottom - r->top};
 }
 
-struct DirectDrawImpl : public IDirectDraw4, public IDirect3D2, public IDirect3DMiniwin {
+struct DirectDrawImpl : public IDirectDraw4, public IDirect3D3, public IDirect3DMiniwin {
 	// IUnknown interface
 	HRESULT QueryInterface(const GUID& riid, void** ppvObject) override;
 	// IDirectDraw interface
@@ -57,6 +57,8 @@ struct DirectDrawImpl : public IDirectDraw4, public IDirect3D2, public IDirect3D
 	HRESULT CreateDevice(const GUID& guid, IDirectDrawSurface* pBackBuffer, IDirect3DDevice2** ppDirect3DDevice)
 		override;
 	HRESULT EnumDevices(LPD3DENUMDEVICESCALLBACK cb, void* ctx) override;
+	// IDirect3D3 interface
+	HRESULT CreateMaterial(IDirect3DMaterial3** material, IUnknown* outer) override;
 	// IDirect3DMiniwin interface
 	HRESULT RequestMSAA(DWORD msaaSamples) override
 	{

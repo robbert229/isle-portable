@@ -1,4 +1,5 @@
 #include "d3drmrenderer.h"
+#include "miniwin.h"
 #ifdef USE_OPENGL1
 #include "d3drmrenderer_opengl1.h"
 #endif
@@ -36,6 +37,108 @@ Direct3DRMRenderer::~Direct3DRMRenderer()
 		ctx->object->DeleteDestroyCallback(OnObjectDestroyed, ctx);
 		delete ctx;
 	}
+}
+
+HRESULT Direct3DRMRenderer::QueryInterface(const GUID& riid, void** ppvObject)
+{
+	if (SDL_memcmp(&riid, &IID_IDirect3DDevice2, sizeof(GUID)) == 0) {
+		this->IUnknown::AddRef();
+		*ppvObject = static_cast<IDirect3DDevice2*>(this);
+		return DD_OK;
+	}
+	if (SDL_memcmp(&riid, &IID_IDirect3DDevice3, sizeof(GUID)) == 0) {
+		this->IUnknown::AddRef();
+		*ppvObject = static_cast<IDirect3DDevice3*>(this);
+		return DD_OK;
+	}
+	MINIWIN_NOT_IMPLEMENTED();
+	return E_NOINTERFACE;
+}
+
+HRESULT Direct3DRMRenderer::GetDirect3D(IDirect3D3** d3d)
+{
+	MINIWIN_NOT_IMPLEMENTED();
+	return DDERR_UNSUPPORTED;
+}
+
+HRESULT Direct3DRMRenderer::SetCurrentViewport(IDirect3DViewport3* viewport)
+{
+	MINIWIN_NOT_IMPLEMENTED();
+	return DDERR_UNSUPPORTED;
+}
+
+HRESULT Direct3DRMRenderer::GetRenderState(D3DRENDERSTATETYPE state, LPDWORD value)
+{
+	MINIWIN_NOT_IMPLEMENTED();
+	return DDERR_UNSUPPORTED;
+}
+
+HRESULT Direct3DRMRenderer::SetRenderState(D3DRENDERSTATETYPE state, DWORD value)
+{
+	MINIWIN_NOT_IMPLEMENTED();
+	return DDERR_UNSUPPORTED;
+}
+
+HRESULT Direct3DRMRenderer::GetLightState(D3DLIGHTSTATETYPE state, LPDWORD value)
+{
+	MINIWIN_NOT_IMPLEMENTED();
+	return DDERR_UNSUPPORTED;
+}
+
+HRESULT Direct3DRMRenderer::SetLightState(D3DLIGHTSTATETYPE state, DWORD value)
+{
+	MINIWIN_NOT_IMPLEMENTED();
+	return DDERR_UNSUPPORTED;
+}
+
+HRESULT Direct3DRMRenderer::SetTransform(D3DTRANSFORMSTATETYPE state, LPD3DMATRIX matrix)
+{
+	MINIWIN_NOT_IMPLEMENTED();
+	return DDERR_UNSUPPORTED;
+}
+
+HRESULT Direct3DRMRenderer::GetTransform(D3DTRANSFORMSTATETYPE state, LPD3DMATRIX matrix)
+{
+	MINIWIN_NOT_IMPLEMENTED();
+	return DDERR_UNSUPPORTED;
+}
+
+HRESULT Direct3DRMRenderer::DrawIndexedPrimitive(
+	D3DPRIMITIVETYPE primitiveType,
+	DWORD vertexType,
+	LPVOID vertices,
+	DWORD vertexCount,
+	WORD* indices,
+	DWORD indexCount,
+	DWORD flags
+)
+{
+	MINIWIN_NOT_IMPLEMENTED();
+	return DDERR_UNSUPPORTED;
+}
+
+HRESULT Direct3DRMRenderer::GetTexture(DWORD stage, IDirect3DTexture2** texture)
+{
+	MINIWIN_NOT_IMPLEMENTED();
+	return DDERR_UNSUPPORTED;
+}
+
+HRESULT Direct3DRMRenderer::SetTexture(DWORD stage, IDirect3DTexture2* texture)
+{
+	MINIWIN_NOT_IMPLEMENTED();
+	return DDERR_UNSUPPORTED;
+}
+
+HRESULT Direct3DRMRenderer::GetTextureStageState(DWORD stage, D3DTEXTURESTAGESTATETYPE state, LPDWORD value)
+{
+	MINIWIN_NOT_IMPLEMENTED();
+	return DDERR_UNSUPPORTED;
+}
+
+HRESULT Direct3DRMRenderer::SetTextureStageState(DWORD stage, D3DTEXTURESTAGESTATETYPE state, DWORD value)
+{
+	MINIWIN_NOT_IMPLEMENTED();
+	return DDERR_UNSUPPORTED;
 }
 
 void Direct3DRMRenderer::RegisterDestroyCallback(IDirect3DRMObject* object, Uint32 id, DestroyCallback callback)
