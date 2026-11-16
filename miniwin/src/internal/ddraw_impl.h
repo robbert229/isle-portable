@@ -16,6 +16,57 @@ inline static SDL_Rect ConvertRect(const RECT* r)
 	return {r->left, r->top, r->right - r->left, r->bottom - r->top};
 }
 
+// DDSURFACEDESC2 <-> DDSURFACEDESC for the fields miniwin uses, so the
+// IDirectDraw4/IDirectDrawSurface4 entry points share the version-1 code.
+inline static void ToSurfaceDesc(const DDSURFACEDESC2& in, DDSURFACEDESC& out)
+{
+	out = {};
+	out.dwSize = sizeof(DDSURFACEDESC);
+	out.dwFlags = in.dwFlags;
+	out.dwHeight = in.dwHeight;
+	out.dwWidth = in.dwWidth;
+	out.lPitch = in.lPitch;
+	out.dwBackBufferCount = in.dwBackBufferCount;
+	out.lpSurface = in.lpSurface;
+	out.ddpfPixelFormat = in.ddpfPixelFormat;
+	out.ddsCaps.dwCaps = in.ddsCaps.dwCaps;
+	if ((in.ddsCaps.dwCaps & DDSCAPS_ZBUFFER) == DDSCAPS_ZBUFFER) {
+		// DDSURFACEDESC2 carries the z-buffer depth in the pixel format.
+		out.dwFlags = out.dwFlags | DDSD_ZBUFFERBITDEPTH;
+		out.dwZBufferBitDepth = in.ddpfPixelFormat.dwRGBBitCount ? in.ddpfPixelFormat.dwRGBBitCount : 16;
+	}
+}
+
+inline static void FromSurfaceDesc(const DDSURFACEDESC& in, DDSURFACEDESC2& out)
+{
+	out = {};
+	out.dwSize = sizeof(DDSURFACEDESC2);
+	out.dwFlags = in.dwFlags;
+	out.dwHeight = in.dwHeight;
+	out.dwWidth = in.dwWidth;
+	out.lPitch = in.lPitch;
+	out.dwBackBufferCount = in.dwBackBufferCount;
+	out.lpSurface = in.lpSurface;
+	out.ddpfPixelFormat = in.ddpfPixelFormat;
+	out.ddpfPixelFormat.dwSize = sizeof(DDPIXELFORMAT);
+	out.ddsCaps.dwCaps = in.ddsCaps.dwCaps;
+}
+
+// A DDBLTFX fill colour as an SDL pixel of `format`. DirectDraw passes a
+// pixel in the surface's own format; miniwin has always read 32-bit fills as
+// A8R8G8B8, which is the same thing on a 32-bit display, and keeps that.
+inline static Uint32 FillColorToPixel(SDL_PixelFormat format, SDL_Palette* palette, DWORD fill)
+{
+	if (format == SDL_PIXELFORMAT_INDEX8) {
+		return fill & 0xFF;
+	}
+	const SDL_PixelFormatDetails* details = SDL_GetPixelFormatDetails(format);
+	if (details->bits_per_pixel <= 16) {
+		return fill & ((1u << details->bits_per_pixel) - 1);
+	}
+	return SDL_MapRGBA(details, palette, (fill >> 16) & 0xFF, (fill >> 8) & 0xFF, fill & 0xFF, (fill >> 24) & 0xFF);
+}
+
 struct DirectDrawImpl : public IDirectDraw4, public IDirect3D3, public IDirect3DMiniwin {
 	// IUnknown interface
 	HRESULT QueryInterface(const GUID& riid, void** ppvObject) override;
@@ -86,6 +137,8 @@ struct DirectDrawImpl : public IDirectDraw4, public IDirect3D3, public IDirect3D
 	D3DRenderStyle GetRenderStyle() const override { return m_renderStyle; }
 
 private:
+	HRESULT CreateSurface4(LPDDSURFACEDESC lpDDSurfaceDesc, LPDIRECTDRAWSURFACE4* lplpDDSurface);
+
 	FrameBufferImpl* m_frameBuffer = nullptr;
 	int m_virtualWidth = 0;
 	int m_virtualHeight = 0;
@@ -97,6 +150,8 @@ private:
 };
 
 HRESULT DirectDrawEnumerate(LPDDENUMCALLBACKA cb, void* context);
+
+SDL_PixelFormat MiniwinDisplayPixelFormat();
 
 HRESULT DirectDrawCreate(LPGUID lpGuid, LPDIRECTDRAW* lplpDD, IUnknown* pUnkOuter);
 

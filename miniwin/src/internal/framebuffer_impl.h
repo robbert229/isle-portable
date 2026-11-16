@@ -50,8 +50,12 @@ struct FrameBufferImpl : public IDirectDrawSurface4 {
 	HRESULT Unlock(LPRECT lpRect) override;
 
 	bool IsIndex8() const { return m_transferBuffer->m_surface->format == SDL_PIXELFORMAT_INDEX8; }
+	// The renderer's current image, read back into the transfer buffer.
+	DirectDrawSurfaceImpl* DownloadTransferBuffer();
 
 private:
+	void DumpFrame();
+
 	uint32_t m_virtualWidth;
 	uint32_t m_virtualHeight;
 	bool m_readOnlyLock;

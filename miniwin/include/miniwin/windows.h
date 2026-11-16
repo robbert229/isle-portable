@@ -92,6 +92,7 @@
 #define IDCANCEL 2
 
 #define BITSPIXEL 12
+#define PLANES 14
 
 #define ERROR_SUCCESS 0L
 #define ERROR_ALREADY_EXISTS 183L

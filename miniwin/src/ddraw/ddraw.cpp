@@ -9,11 +9,14 @@
 #include "miniwin/d3d.h"
 
 #include <SDL3/SDL.h>
+#include <algorithm>
 #include <assert.h>
 #include <cinttypes>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <iterator>
+#include <vector>
 
 SDL_Window* DDWindow;
 Direct3DRMRenderer* DDRenderer;
@@ -83,23 +86,33 @@ HRESULT DirectDrawImpl::CreateSurface(
 	IUnknown* pUnkOuter
 )
 {
+	IDirectDrawSurface4* surface = nullptr;
+	HRESULT result = CreateSurface4(lpDDSurfaceDesc, &surface);
+	if (result == DD_OK) {
+		*lplpDDSurface = surface;
+	}
+	return result;
+}
+
+HRESULT DirectDrawImpl::CreateSurface4(LPDDSURFACEDESC lpDDSurfaceDesc, LPDIRECTDRAWSURFACE4* lplpDDSurface)
+{
 	if ((lpDDSurfaceDesc->dwFlags & DDSD_CAPS) == DDSD_CAPS) {
 		if ((lpDDSurfaceDesc->ddsCaps.dwCaps & DDSCAPS_ZBUFFER) == DDSCAPS_ZBUFFER) {
 			if ((lpDDSurfaceDesc->dwFlags & DDSD_ZBUFFERBITDEPTH) != DDSD_ZBUFFERBITDEPTH) {
 				return DDERR_INVALIDPARAMS;
 			}
 			SDL_Log("Todo: Set %" PRIu32 "bit Z-Buffer", lpDDSurfaceDesc->dwZBufferBitDepth);
-			*lplpDDSurface = static_cast<IDirectDrawSurface*>(new DummySurfaceImpl);
+			*lplpDDSurface = new DummySurfaceImpl;
 			return DD_OK;
 		}
 		if ((lpDDSurfaceDesc->ddsCaps.dwCaps & DDSCAPS_PRIMARYSURFACE) == DDSCAPS_PRIMARYSURFACE) {
 			m_frameBuffer = new FrameBufferImpl(m_virtualWidth, m_virtualHeight);
-			*lplpDDSurface = static_cast<IDirectDrawSurface*>(m_frameBuffer);
+			*lplpDDSurface = m_frameBuffer;
 			return DD_OK;
 		}
 		if ((lpDDSurfaceDesc->ddsCaps.dwCaps & DDSCAPS_3DDEVICE) == DDSCAPS_3DDEVICE) {
 			m_frameBuffer->AddRef();
-			*lplpDDSurface = static_cast<IDirectDrawSurface*>(m_frameBuffer);
+			*lplpDDSurface = m_frameBuffer;
 			return DD_OK;
 		}
 		if ((lpDDSurfaceDesc->ddsCaps.dwCaps & DDSCAPS_TEXTURE) == DDSCAPS_TEXTURE) {
@@ -139,7 +152,7 @@ HRESULT DirectDrawImpl::CreateSurface(
 	if (width == 0 || height == 0) {
 		return DDERR_INVALIDPARAMS;
 	}
-	*lplpDDSurface = static_cast<IDirectDrawSurface*>(new DirectDrawSurfaceImpl(width, height, format));
+	*lplpDDSurface = new DirectDrawSurfaceImpl(width, height, format);
 	return DD_OK;
 }
 
@@ -340,8 +353,25 @@ HRESULT DirectDrawImpl::CreateSurface(
 	IUnknown* pUnkOuter
 )
 {
-	MINIWIN_NOT_IMPLEMENTED();
-	return DDERR_UNSUPPORTED;
+	if (!lpDDSurfaceDesc || !lplpDDSurface) {
+		return DDERR_INVALIDPARAMS;
+	}
+	DDSURFACEDESC desc;
+	ToSurfaceDesc(*lpDDSurfaceDesc, desc);
+	return CreateSurface4(&desc, lplpDDSurface);
+}
+
+// The display format: what a surface without DDSD_PIXELFORMAT gets, and what
+// GetDisplayMode and GetDeviceCaps(BITSPIXEL) report.
+SDL_PixelFormat MiniwinDisplayPixelFormat()
+{
+#ifdef MINIWIN_PIXELFORMAT
+	return MINIWIN_PIXELFORMAT;
+#else
+	SDL_DisplayID displayID = SDL_GetPrimaryDisplay();
+	const SDL_DisplayMode* mode = displayID ? SDL_GetCurrentDisplayMode(displayID) : nullptr;
+	return mode ? mode->format : SDL_PIXELFORMAT_XRGB8888;
+#endif
 }
 
 HRESULT DirectDrawImpl::EnumDisplayModes(
@@ -351,20 +381,117 @@ HRESULT DirectDrawImpl::EnumDisplayModes(
 	LPDDENUMMODESCALLBACK2 lpEnumModesCallback
 )
 {
-	MINIWIN_NOT_IMPLEMENTED();
-	return DDERR_UNSUPPORTED;
+	if (!lpEnumModesCallback) {
+		return DDERR_INVALIDPARAMS;
+	}
+
+	// SetDisplayMode only sets the virtual resolution, which the renderer
+	// scales into the window, so every classic mode can be set. The display's
+	// own modes are listed too.
+	struct Size {
+		int w, h;
+	};
+	static const Size classicModes[] = {
+		{320, 200},
+		{320, 240},
+		{512, 384},
+		{640, 400},
+		{640, 480},
+		{800, 600},
+		{1024, 768},
+		{1152, 864},
+		{1280, 960},
+		{1280, 1024},
+		{1600, 1200},
+	};
+	std::vector<Size> sizes(std::begin(classicModes), std::end(classicModes));
+
+	SDL_DisplayID displayID = SDL_GetPrimaryDisplay();
+	if (displayID) {
+		int count = 0;
+		SDL_DisplayMode** modes = SDL_GetFullscreenDisplayModes(displayID, &count);
+		for (int i = 0; modes && i < count; i++) {
+			sizes.push_back({modes[i]->w, modes[i]->h});
+		}
+		SDL_free(modes);
+		if (const SDL_DisplayMode* desktop = SDL_GetDesktopDisplayMode(displayID)) {
+			sizes.push_back({desktop->w, desktop->h});
+		}
+	}
+	std::sort(sizes.begin(), sizes.end(), [](const Size& a, const Size& b) {
+		return a.w != b.w ? a.w < b.w : a.h < b.h;
+	});
+	sizes.erase(
+		std::unique(
+			sizes.begin(),
+			sizes.end(),
+			[](const Size& a, const Size& b) { return a.w == b.w && a.h == b.h; }
+		),
+		sizes.end()
+	);
+
+	const SDL_PixelFormatDetails* details = SDL_GetPixelFormatDetails(MiniwinDisplayPixelFormat());
+	if (!details) {
+		return DDERR_GENERIC;
+	}
+
+	for (const Size& size : sizes) {
+		DDSURFACEDESC2 ddsd = {};
+		ddsd.dwSize = sizeof(DDSURFACEDESC2);
+		ddsd.dwFlags = DDSD_WIDTH | DDSD_HEIGHT | DDSD_PIXELFORMAT;
+		ddsd.dwWidth = size.w;
+		ddsd.dwHeight = size.h;
+		ddsd.ddpfPixelFormat.dwSize = sizeof(DDPIXELFORMAT);
+		ddsd.ddpfPixelFormat.dwFlags = DDPF_RGB;
+		if (details->Amask) {
+			ddsd.ddpfPixelFormat.dwFlags |= DDPF_ALPHAPIXELS;
+		}
+		if (details->bits_per_pixel == 8) {
+			ddsd.ddpfPixelFormat.dwFlags |= DDPF_PALETTEINDEXED8;
+		}
+		ddsd.ddpfPixelFormat.dwRGBBitCount = details->bits_per_pixel;
+		ddsd.ddpfPixelFormat.dwRBitMask = details->Rmask;
+		ddsd.ddpfPixelFormat.dwGBitMask = details->Gmask;
+		ddsd.ddpfPixelFormat.dwBBitMask = details->Bmask;
+		ddsd.ddpfPixelFormat.dwRGBAlphaBitMask = details->Amask;
+
+		if (lpDDSurfaceDesc) {
+			if ((lpDDSurfaceDesc->dwFlags & DDSD_WIDTH) == DDSD_WIDTH && lpDDSurfaceDesc->dwWidth != ddsd.dwWidth) {
+				continue;
+			}
+			if ((lpDDSurfaceDesc->dwFlags & DDSD_HEIGHT) == DDSD_HEIGHT && lpDDSurfaceDesc->dwHeight != ddsd.dwHeight) {
+				continue;
+			}
+			if ((lpDDSurfaceDesc->dwFlags & DDSD_PIXELFORMAT) == DDSD_PIXELFORMAT &&
+				lpDDSurfaceDesc->ddpfPixelFormat.dwRGBBitCount != ddsd.ddpfPixelFormat.dwRGBBitCount) {
+				continue;
+			}
+		}
+
+		if (lpEnumModesCallback(&ddsd, lpContext) == DDENUMRET_CANCEL) {
+			break;
+		}
+	}
+
+	return DD_OK;
 }
 
 HRESULT DirectDrawImpl::SetDisplayMode(DWORD dwWidth, DWORD dwHeight, DWORD dwBPP, DWORD dwRefreshRate, DWORD dwFlags)
 {
-	MINIWIN_NOT_IMPLEMENTED();
-	return DDERR_UNSUPPORTED;
+	return SetDisplayMode(dwWidth, dwHeight, dwBPP);
 }
 
 HRESULT DirectDrawImpl::GetAvailableVidMem(LPDDSCAPS2 lpDDSCaps, LPDWORD lpdwTotal, LPDWORD lpdwFree)
 {
-	MINIWIN_NOT_IMPLEMENTED();
-	return DDERR_UNSUPPORTED;
+	// Surfaces live in system memory; report a generous fixed budget.
+	const DWORD budget = 256u * 1024u * 1024u;
+	if (lpdwTotal) {
+		*lpdwTotal = budget;
+	}
+	if (lpdwFree) {
+		*lpdwFree = budget;
+	}
+	return DD_OK;
 }
 
 // IDirect3D2 interface
@@ -383,6 +510,7 @@ HRESULT DirectDrawImpl::CreateDevice(
 		SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Failed to create a renderer for the selected device GUID");
 		return E_NOINTERFACE;
 	}
+	DDRenderer->SetDirect3D(this);
 	*ppDirect3DDevice = static_cast<IDirect3DDevice2*>(DDRenderer);
 	return DD_OK;
 }

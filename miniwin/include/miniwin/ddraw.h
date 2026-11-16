@@ -4,6 +4,7 @@
 #include "miniwin/windows.h"
 
 #define DDENUMRET_OK TRUE
+#define DDENUMRET_CANCEL FALSE
 
 #define MAKE_DDHRESULT(code) MAKE_HRESULT(1, 0x876, code)
 

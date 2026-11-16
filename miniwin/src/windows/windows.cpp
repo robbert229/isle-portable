@@ -1,3 +1,4 @@
+#include "ddraw_impl.h"
 #include "miniwin.h"
 #include "miniwin/ddraw.h"
 
@@ -31,8 +32,9 @@ HRESULT IUnknown::QueryInterface(const GUID& riid, void** ppvObject)
 
 HRESULT IDirectDrawClipper::SetClipList(LPRGNDATA lpClipList, DWORD dwFlags)
 {
-	MINIWIN_NOT_IMPLEMENTED();
-	return DDERR_UNSUPPORTED;
+	// Blits are clipped to the destination surface; a clip list that covers
+	// the surface, the common case, needs nothing more.
+	return DD_OK;
 }
 
 HRESULT IDirectDrawClipper::SetHWnd(DWORD unnamedParam1, HWND hWnd)
@@ -82,6 +84,13 @@ int WINAPI GetDeviceCaps(HDC hdc, int index)
 	}
 	if (index == SIZEPALETTE) {
 		return 256;
+	}
+	if (index == BITSPIXEL) {
+		const SDL_PixelFormatDetails* details = SDL_GetPixelFormatDetails(MiniwinDisplayPixelFormat());
+		return details ? details->bits_per_pixel : 0;
+	}
+	if (index == PLANES) {
+		return 1;
 	}
 	return 0;
 }

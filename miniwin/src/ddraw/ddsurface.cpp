@@ -2,6 +2,7 @@
 #include "ddpalette_impl.h"
 #include "ddraw_impl.h"
 #include "ddsurface_impl.h"
+#include "framebuffer_impl.h"
 #include "miniwin.h"
 
 #include <assert.h>
@@ -68,20 +69,8 @@ HRESULT DirectDrawSurfaceImpl::Blt(
 )
 {
 	if ((dwFlags & DDBLT_COLORFILL) == DDBLT_COLORFILL) {
-		Uint32 color;
-		if (m_surface->format == SDL_PIXELFORMAT_INDEX8) {
-			// For INDEX8 surfaces the fill color is a palette index, not RGBA.
-			color = lpDDBltFx->dwFillColor & 0xFF;
-		}
-		else {
-			Uint8 a = (lpDDBltFx->dwFillColor >> 24) & 0xFF;
-			Uint8 r = (lpDDBltFx->dwFillColor >> 16) & 0xFF;
-			Uint8 g = (lpDDBltFx->dwFillColor >> 8) & 0xFF;
-			Uint8 b = lpDDBltFx->dwFillColor & 0xFF;
-
-			const SDL_PixelFormatDetails* details = SDL_GetPixelFormatDetails(m_surface->format);
-			color = SDL_MapRGBA(details, nullptr, r, g, b, a);
-		}
+		SDL_Palette* palette = m_palette ? static_cast<DirectDrawPaletteImpl*>(m_palette)->m_palette : nullptr;
+		Uint32 color = FillColorToPixel(m_surface->format, palette, lpDDBltFx->dwFillColor);
 		if (lpDestRect) {
 			SDL_Rect dstRect = ConvertRect(lpDestRect);
 			SDL_FillSurfaceRect(m_surface, &dstRect, color);
@@ -89,7 +78,21 @@ HRESULT DirectDrawSurfaceImpl::Blt(
 		else {
 			SDL_FillSurfaceRect(m_surface, nullptr, color);
 		}
+		if (m_texture) {
+			m_texture->Changed(TRUE, FALSE);
+		}
 		return DD_OK;
+	}
+
+	if (!lpDDSrcSurface) {
+		return DDERR_INVALIDPARAMS;
+	}
+	if (auto frameBuffer = dynamic_cast<FrameBufferImpl*>(lpDDSrcSurface)) {
+		// Reading the screen back: copy from what the renderer has drawn.
+		lpDDSrcSurface = frameBuffer->DownloadTransferBuffer();
+		if (!lpDDSrcSurface) {
+			return DDERR_GENERIC;
+		}
 	}
 
 	auto other = static_cast<DirectDrawSurfaceImpl*>(lpDDSrcSurface);
@@ -106,12 +109,25 @@ HRESULT DirectDrawSurfaceImpl::Blt(
 		}
 	}
 
-	if (!SDL_BlitSurfaceScaled(blitSource, &srcRect, m_surface, &dstRect, SDL_SCALEMODE_NEAREST)) {
-		return DDERR_GENERIC;
+	// DirectDraw applies the source colour key only when asked to.
+	bool keyed = SDL_SurfaceHasColorKey(blitSource);
+	Uint32 key = 0;
+	bool useKey = (dwFlags & DDBLT_KEYSRC) == DDBLT_KEYSRC;
+	if (keyed && !useKey) {
+		SDL_GetSurfaceColorKey(blitSource, &key);
+		SDL_SetSurfaceColorKey(blitSource, false, 0);
 	}
 
+	bool blitted = SDL_BlitSurfaceScaled(blitSource, &srcRect, m_surface, &dstRect, SDL_SCALEMODE_NEAREST);
+
+	if (keyed && !useKey) {
+		SDL_SetSurfaceColorKey(blitSource, true, key);
+	}
 	if (blitSource != other->m_surface) {
 		SDL_DestroySurface(blitSource);
+	}
+	if (!blitted) {
+		return DDERR_GENERIC;
 	}
 	if (m_texture) {
 		m_texture->Changed(TRUE, FALSE);
@@ -127,13 +143,27 @@ HRESULT DirectDrawSurfaceImpl::BltFast(
 	DDBltFastFlags dwTrans
 )
 {
-	RECT destRect = {
-		(int) dwX,
-		(int) dwY,
-		(int) (lpSrcRect->right - lpSrcRect->left + dwX),
-		(int) (lpSrcRect->bottom - lpSrcRect->top + dwY)
-	};
-	return Blt(&destRect, lpDDSrcSurface, lpSrcRect, DDBLT_NONE, nullptr);
+	if (!lpDDSrcSurface) {
+		return DDERR_INVALIDPARAMS;
+	}
+	int width, height;
+	if (lpSrcRect) {
+		width = lpSrcRect->right - lpSrcRect->left;
+		height = lpSrcRect->bottom - lpSrcRect->top;
+	}
+	else {
+		DDSURFACEDESC desc = {};
+		desc.dwSize = sizeof(desc);
+		lpDDSrcSurface->GetSurfaceDesc(&desc);
+		width = desc.dwWidth;
+		height = desc.dwHeight;
+	}
+	RECT destRect = {(int) dwX, (int) dwY, (int) dwX + width, (int) dwY + height};
+	DDBltFlags flags = DDBLT_NONE;
+	if ((dwTrans & DDBLTFAST_SRCCOLORKEY) == DDBLTFAST_SRCCOLORKEY) {
+		flags = flags | DDBLT_KEYSRC;
+	}
+	return Blt(&destRect, lpDDSrcSurface, lpSrcRect, flags, nullptr);
 }
 
 HRESULT DirectDrawSurfaceImpl::Flip(LPDIRECTDRAWSURFACE lpDDSurfaceTargetOverride, DDFlipFlags dwFlags)
@@ -187,6 +217,7 @@ HRESULT DirectDrawSurfaceImpl::GetSurfaceDesc(LPDDSURFACEDESC lpDDSurfaceDesc)
 	lpDDSurfaceDesc->dwFlags |= DDSD_WIDTH | DDSD_HEIGHT;
 	lpDDSurfaceDesc->dwWidth = m_surface->w;
 	lpDDSurfaceDesc->dwHeight = m_surface->h;
+	lpDDSurfaceDesc->lPitch = m_surface->pitch;
 	return DD_OK;
 }
 
@@ -207,7 +238,11 @@ HRESULT DirectDrawSurfaceImpl::Lock(
 	}
 
 	GetSurfaceDesc(lpDDSurfaceDesc);
-	lpDDSurfaceDesc->lpSurface = m_surface->pixels;
+	Uint8* pixels = static_cast<Uint8*>(m_surface->pixels);
+	if (lpDestRect) {
+		pixels += lpDestRect->top * m_surface->pitch + lpDestRect->left * SDL_BYTESPERPIXEL(m_surface->format);
+	}
+	lpDDSurfaceDesc->lpSurface = pixels;
 	lpDDSurfaceDesc->lPitch = m_surface->pitch;
 
 	return DD_OK;
@@ -233,12 +268,20 @@ HRESULT DirectDrawSurfaceImpl::SetClipper(LPDIRECTDRAWCLIPPER lpDDClipper)
 
 HRESULT DirectDrawSurfaceImpl::SetColorKey(DDColorKeyFlags dwFlags, LPDDCOLORKEY lpDDColorKey)
 {
-	if (lpDDColorKey->dwColorSpaceLowValue != lpDDColorKey->dwColorSpaceHighValue) {
-		MINIWIN_NOT_IMPLEMENTED();
+	if (!lpDDColorKey) {
+		SDL_SetSurfaceColorKey(m_surface, false, 0);
 	}
-
-	if (SDL_SetSurfaceColorKey(m_surface, true, lpDDColorKey->dwColorSpaceLowValue) != 0) {
-		return DDERR_GENERIC;
+	else {
+		if (lpDDColorKey->dwColorSpaceLowValue != lpDDColorKey->dwColorSpaceHighValue) {
+			// SDL keys a single value; the low end of the range is used.
+			MINIWIN_NOT_IMPLEMENTED();
+		}
+		if (!SDL_SetSurfaceColorKey(m_surface, true, lpDDColorKey->dwColorSpaceLowValue)) {
+			return DDERR_GENERIC;
+		}
+	}
+	if (m_texture) {
+		m_texture->Changed(TRUE, FALSE);
 	}
 
 	return DD_OK;
@@ -283,26 +326,28 @@ HRESULT DirectDrawSurfaceImpl::Blt(
 	LPDDBLTFX lpDDBltFx
 )
 {
-	MINIWIN_NOT_IMPLEMENTED();
-	return DDERR_UNSUPPORTED;
+	return Blt(lpDestRect, static_cast<LPDIRECTDRAWSURFACE>(lpDDSrcSurface), lpSrcRect, dwFlags, lpDDBltFx);
 }
 
 HRESULT DirectDrawSurfaceImpl::Flip(LPDIRECTDRAWSURFACE4 lpDDSurfaceTargetOverride, DDFlipFlags dwFlags)
 {
-	MINIWIN_NOT_IMPLEMENTED();
-	return DDERR_UNSUPPORTED;
+	return DDERR_NOTFLIPPABLE;
 }
 
 HRESULT DirectDrawSurfaceImpl::GetAttachedSurface(LPDDSCAPS2 lpDDSCaps, LPDIRECTDRAWSURFACE4* lplpDDAttachedSurface)
 {
-	MINIWIN_NOT_IMPLEMENTED();
-	return DDERR_UNSUPPORTED;
+	return DDERR_NOTFOUND;
 }
 
 HRESULT DirectDrawSurfaceImpl::GetSurfaceDesc(LPDDSURFACEDESC2 lpDDSurfaceDesc)
 {
-	MINIWIN_NOT_IMPLEMENTED();
-	return DDERR_UNSUPPORTED;
+	DDSURFACEDESC desc = {};
+	desc.dwSize = sizeof(desc);
+	HRESULT result = GetSurfaceDesc(&desc);
+	if (result == DD_OK) {
+		FromSurfaceDesc(desc, *lpDDSurfaceDesc);
+	}
+	return result;
 }
 
 HRESULT DirectDrawSurfaceImpl::Lock(
@@ -312,14 +357,18 @@ HRESULT DirectDrawSurfaceImpl::Lock(
 	HANDLE hEvent
 )
 {
-	MINIWIN_NOT_IMPLEMENTED();
-	return DDERR_UNSUPPORTED;
+	DDSURFACEDESC desc = {};
+	desc.dwSize = sizeof(desc);
+	HRESULT result = Lock(lpDestRect, &desc, dwFlags, hEvent);
+	if (result == DD_OK) {
+		FromSurfaceDesc(desc, *lpDDSurfaceDesc);
+	}
+	return result;
 }
 
 HRESULT DirectDrawSurfaceImpl::Unlock(LPRECT lpRect)
 {
-	MINIWIN_NOT_IMPLEMENTED();
-	return DDERR_UNSUPPORTED;
+	return Unlock(static_cast<LPVOID>(nullptr));
 }
 
 // IDirect3DTexture2 interface

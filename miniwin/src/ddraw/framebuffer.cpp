@@ -11,6 +11,8 @@ FrameBufferImpl::FrameBufferImpl(DWORD virtualWidth, DWORD virtualHeight)
 {
 #ifdef __DJGPP__
 	m_transferBuffer = new DirectDrawSurfaceImpl(m_virtualWidth, m_virtualHeight, SDL_PIXELFORMAT_INDEX8);
+#elif defined(MINIWIN_PIXELFORMAT)
+	m_transferBuffer = new DirectDrawSurfaceImpl(m_virtualWidth, m_virtualHeight, MINIWIN_PIXELFORMAT);
 #else
 	m_transferBuffer = new DirectDrawSurfaceImpl(m_virtualWidth, m_virtualHeight, SDL_PIXELFORMAT_RGBA32);
 #endif
@@ -77,6 +79,13 @@ HRESULT FrameBufferImpl::Blt(
 		Uint8 r = (lpDDBltFx->dwFillColor >> 16) & 0xFF;
 		Uint8 g = (lpDDBltFx->dwFillColor >> 8) & 0xFF;
 		Uint8 b = lpDDBltFx->dwFillColor & 0xFF;
+		SDL_PixelFormat format = m_transferBuffer->m_surface->format;
+		if (format != SDL_PIXELFORMAT_INDEX8 && SDL_BITSPERPIXEL(format) <= 16) {
+			// A pixel in the framebuffer's own format.
+			Uint32 pixel = FillColorToPixel(format, nullptr, lpDDBltFx->dwFillColor);
+			SDL_GetRGB(pixel, SDL_GetPixelFormatDetails(format), nullptr, &r, &g, &b);
+			a = 0xFF;
+		}
 
 		float fa = a / 255.0f;
 		float fr = r / 255.0f;
@@ -134,8 +143,46 @@ HRESULT FrameBufferImpl::Flip(LPDIRECTDRAWSURFACE lpDDSurfaceTargetOverride, DDF
 	if (!DDRenderer) {
 		return DDERR_GENERIC;
 	}
+	DumpFrame();
 	DDRenderer->Flip();
 	return DD_OK;
+}
+
+// MINIWIN_DUMP_FRAME=<file>: write each presented frame to <file> (PNG when
+// SDL can, else BMP), replacing the previous one, for headless runs.
+void FrameBufferImpl::DumpFrame()
+{
+	static const char* path = SDL_getenv("MINIWIN_DUMP_FRAME");
+	if (!path || !*path) {
+		return;
+	}
+	SDL_Surface* frame = SDL_CreateSurface(m_virtualWidth, m_virtualHeight, SDL_PIXELFORMAT_RGB24);
+	if (!frame) {
+		return;
+	}
+	DDRenderer->Download(frame);
+	char* temp = nullptr;
+	SDL_asprintf(&temp, "%s.tmp", path);
+	bool saved;
+#if SDL_VERSION_ATLEAST(3, 4, 0)
+	saved = SDL_SavePNG(frame, temp);
+#else
+	saved = SDL_SaveBMP(frame, temp);
+#endif
+	if (saved) {
+		SDL_RenamePath(temp, path);
+	}
+	SDL_free(temp);
+	SDL_DestroySurface(frame);
+}
+
+DirectDrawSurfaceImpl* FrameBufferImpl::DownloadTransferBuffer()
+{
+	if (!DDRenderer) {
+		return nullptr;
+	}
+	DDRenderer->Download(m_transferBuffer->m_surface);
+	return m_transferBuffer;
 }
 
 HRESULT FrameBufferImpl::GetAttachedSurface(LPDDSCAPS lpDDSCaps, LPDIRECTDRAWSURFACE* lplpDDAttachedSurface)
@@ -277,36 +324,47 @@ HRESULT FrameBufferImpl::Blt(
 	LPDDBLTFX lpDDBltFx
 )
 {
-	MINIWIN_NOT_IMPLEMENTED();
-	return DDERR_UNSUPPORTED;
+	return Blt(lpDestRect, static_cast<LPDIRECTDRAWSURFACE>(lpDDSrcSurface), lpSrcRect, dwFlags, lpDDBltFx);
 }
 
 HRESULT FrameBufferImpl::Flip(LPDIRECTDRAWSURFACE4 lpDDSurfaceTargetOverride, DDFlipFlags dwFlags)
 {
-	MINIWIN_NOT_IMPLEMENTED();
-	return DDERR_UNSUPPORTED;
+	return Flip(static_cast<LPDIRECTDRAWSURFACE>(lpDDSurfaceTargetOverride), dwFlags);
 }
 
 HRESULT FrameBufferImpl::GetAttachedSurface(LPDDSCAPS2 lpDDSCaps, LPDIRECTDRAWSURFACE4* lplpDDAttachedSurface)
 {
-	MINIWIN_NOT_IMPLEMENTED();
-	return DDERR_UNSUPPORTED;
+	if ((lpDDSCaps->dwCaps & DDSCAPS_BACKBUFFER) != DDSCAPS_BACKBUFFER) {
+		return DDERR_INVALIDPARAMS;
+	}
+	AddRef();
+	*lplpDDAttachedSurface = this;
+	return DD_OK;
 }
 
 HRESULT FrameBufferImpl::GetSurfaceDesc(LPDDSURFACEDESC2 lpDDSurfaceDesc)
 {
-	MINIWIN_NOT_IMPLEMENTED();
-	return DDERR_UNSUPPORTED;
+	DDSURFACEDESC desc = {};
+	desc.dwSize = sizeof(desc);
+	HRESULT result = GetSurfaceDesc(&desc);
+	if (result == DD_OK) {
+		FromSurfaceDesc(desc, *lpDDSurfaceDesc);
+	}
+	return result;
 }
 
 HRESULT FrameBufferImpl::Lock(LPRECT lpDestRect, LPDDSURFACEDESC2 lpDDSurfaceDesc, DDLockFlags dwFlags, HANDLE hEvent)
 {
-	MINIWIN_NOT_IMPLEMENTED();
-	return DDERR_UNSUPPORTED;
+	DDSURFACEDESC desc = {};
+	desc.dwSize = sizeof(desc);
+	HRESULT result = Lock(lpDestRect, &desc, dwFlags, hEvent);
+	if (result == DD_OK) {
+		FromSurfaceDesc(desc, *lpDDSurfaceDesc);
+	}
+	return result;
 }
 
 HRESULT FrameBufferImpl::Unlock(LPRECT lpRect)
 {
-	MINIWIN_NOT_IMPLEMENTED();
-	return DDERR_UNSUPPORTED;
+	return Unlock(static_cast<LPVOID>(nullptr));
 }
