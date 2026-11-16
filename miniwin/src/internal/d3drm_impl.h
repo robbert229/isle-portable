@@ -11,7 +11,7 @@ struct PickRecord {
 	D3DRMPICKDESC desc;
 };
 
-struct Direct3DRMImpl : virtual public IDirect3DRM2 {
+struct Direct3DRMImpl : virtual public IDirect3DRM3 {
 	// IUnknown interface
 	HRESULT QueryInterface(const GUID& riid, void** ppvObject) override;
 	// IDirect3DRM interface
@@ -40,6 +40,27 @@ struct Direct3DRMImpl : virtual public IDirect3DRM2 {
 	) override;
 	HRESULT SetDefaultTextureShades(DWORD count) override;
 	HRESULT SetDefaultTextureColors(DWORD count) override;
+	// IDirect3DRM3 interface
+	HRESULT CreateFrame(IDirect3DRMFrame3* parent, IDirect3DRMFrame3** outFrame) override;
+	HRESULT CreateMaterial(D3DVALUE power, IDirect3DRMMaterial2** outMaterial) override;
+	HRESULT CreateDeviceFromSurface(
+		GUID* guid,
+		IDirectDraw* dd,
+		IDirectDrawSurface* surface,
+		DWORD flags,
+		IDirect3DRMDevice3** outDevice
+	) override;
+	HRESULT CreateTextureFromSurface(LPDIRECTDRAWSURFACE surface, IDirect3DRMTexture3** outTexture) override;
+	HRESULT CreateViewport(
+		IDirect3DRMDevice3* device,
+		IDirect3DRMFrame3* camera,
+		DWORD x,
+		DWORD y,
+		DWORD width,
+		DWORD height,
+		IDirect3DRMViewport2** outViewport
+	) override;
+	HRESULT LoadTexture(const char* filename, IDirect3DRMTexture3** outTexture) override;
 };
 
 template <typename InterfaceType, typename ActualType, typename ArrayInterface>

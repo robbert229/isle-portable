@@ -306,3 +306,9 @@ HRESULT Direct3DRMMeshImpl::GetBox(D3DRMBOX* box)
 
 	return DD_OK;
 }
+
+HRESULT Direct3DRMMeshImpl::Scale(D3DVALUE sx, D3DVALUE sy, D3DVALUE sz)
+{
+	MINIWIN_NOT_IMPLEMENTED();
+	return E_NOTIMPL;
+}

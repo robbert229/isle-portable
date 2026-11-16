@@ -19,6 +19,7 @@
 #define HWND_NOTOPMOST ((HWND) (-2))
 #define RGB(r, g, b) (((BYTE) (r) | ((BYTE) (g) << 8) | ((BYTE) (b) << 16)))
 #define S_OK ((HRESULT) 0)
+#define E_NOTIMPL ((HRESULT) 0x80004001)
 #define E_NOINTERFACE (0x80004002)
 #define VOID void
 #define TRUE 1

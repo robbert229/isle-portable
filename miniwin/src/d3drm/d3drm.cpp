@@ -89,9 +89,34 @@ struct Direct3DRMWinDeviceImpl : public IDirect3DRMWinDevice {
 	void HandlePaint(void* p_dc) override { MINIWIN_NOT_IMPLEMENTED(); }
 };
 
-struct Direct3DRMMaterialImpl : public Direct3DRMObjectBaseImpl<IDirect3DRMMaterial> {
+struct Direct3DRMMaterialImpl : public Direct3DRMObjectBaseImpl<IDirect3DRMMaterial2> {
 	Direct3DRMMaterialImpl(D3DVALUE power) : m_power(power) {}
+	HRESULT QueryInterface(const GUID& riid, void** ppvObject) override
+	{
+		if (SDL_memcmp(&riid, &IID_IDirect3DRMMaterial, sizeof(GUID)) == 0) {
+			this->IUnknown::AddRef();
+			*ppvObject = static_cast<IDirect3DRMMaterial*>(this);
+			return DD_OK;
+		}
+		if (SDL_memcmp(&riid, &IID_IDirect3DRMMaterial2, sizeof(GUID)) == 0) {
+			this->IUnknown::AddRef();
+			*ppvObject = static_cast<IDirect3DRMMaterial2*>(this);
+			return DD_OK;
+		}
+		MINIWIN_NOT_IMPLEMENTED();
+		return E_NOINTERFACE;
+	}
 	D3DVALUE GetPower() override { return m_power; }
+	HRESULT SetSpecular(D3DVALUE r, D3DVALUE g, D3DVALUE b) override
+	{
+		MINIWIN_NOT_IMPLEMENTED();
+		return E_NOTIMPL;
+	}
+	HRESULT SetEmissive(D3DVALUE r, D3DVALUE g, D3DVALUE b) override
+	{
+		MINIWIN_NOT_IMPLEMENTED();
+		return E_NOTIMPL;
+	}
 
 private:
 	D3DVALUE m_power;
@@ -99,9 +124,19 @@ private:
 
 HRESULT Direct3DRMImpl::QueryInterface(const GUID& riid, void** ppvObject)
 {
+	if (SDL_memcmp(&riid, &IID_IDirect3DRM, sizeof(GUID)) == 0) {
+		this->IUnknown::AddRef();
+		*ppvObject = static_cast<IDirect3DRM*>(this);
+		return DD_OK;
+	}
 	if (SDL_memcmp(&riid, &IID_IDirect3DRM2, sizeof(GUID)) == 0) {
 		this->IUnknown::AddRef();
 		*ppvObject = static_cast<IDirect3DRM2*>(this);
+		return DD_OK;
+	}
+	if (SDL_memcmp(&riid, &IID_IDirect3DRM3, sizeof(GUID)) == 0) {
+		this->IUnknown::AddRef();
+		*ppvObject = static_cast<IDirect3DRM3*>(this);
 		return DD_OK;
 	}
 	SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Direct3DRMImpl does not implement guid");
@@ -211,6 +246,78 @@ HRESULT Direct3DRMImpl::SetDefaultTextureShades(DWORD count)
 HRESULT Direct3DRMImpl::SetDefaultTextureColors(DWORD count)
 {
 	return DD_OK;
+}
+
+// IDirect3DRM3 interface
+HRESULT Direct3DRMImpl::CreateFrame(IDirect3DRMFrame3* parent, IDirect3DRMFrame3** outFrame)
+{
+	auto parentImpl = static_cast<Direct3DRMFrameImpl*>(parent);
+	*outFrame = static_cast<IDirect3DRMFrame3*>(new Direct3DRMFrameImpl{parentImpl});
+	return DD_OK;
+}
+
+HRESULT Direct3DRMImpl::CreateMaterial(D3DVALUE power, IDirect3DRMMaterial2** outMaterial)
+{
+	*outMaterial = static_cast<IDirect3DRMMaterial2*>(new Direct3DRMMaterialImpl(power));
+	return DD_OK;
+}
+
+HRESULT Direct3DRMImpl::CreateDeviceFromSurface(
+	GUID* guid,
+	IDirectDraw* dd,
+	IDirectDrawSurface* surface,
+	DWORD flags,
+	IDirect3DRMDevice3** outDevice
+)
+{
+	if (flags) {
+		MINIWIN_NOT_IMPLEMENTED();
+		return E_NOTIMPL;
+	}
+	IDirect3DRMDevice2* device;
+	HRESULT result = CreateDeviceFromSurface(static_cast<const GUID*>(guid), dd, surface, &device);
+	if (result == DD_OK) {
+		*outDevice = static_cast<Direct3DRMDevice2Impl*>(device);
+	}
+	return result;
+}
+
+HRESULT Direct3DRMImpl::CreateTextureFromSurface(LPDIRECTDRAWSURFACE surface, IDirect3DRMTexture3** outTexture)
+{
+	*outTexture = static_cast<IDirect3DRMTexture3*>(new Direct3DRMTextureImpl(surface, true));
+	return DD_OK;
+}
+
+HRESULT Direct3DRMImpl::CreateViewport(
+	IDirect3DRMDevice3* device,
+	IDirect3DRMFrame3* camera,
+	DWORD x,
+	DWORD y,
+	DWORD width,
+	DWORD height,
+	IDirect3DRMViewport2** outViewport
+)
+{
+	IDirect3DRMViewport* viewport;
+	HRESULT result = CreateViewport(
+		static_cast<IDirect3DRMDevice2*>(device),
+		static_cast<IDirect3DRMFrame*>(camera),
+		x,
+		y,
+		width,
+		height,
+		&viewport
+	);
+	if (result == DD_OK) {
+		*outViewport = static_cast<Direct3DRMViewportImpl*>(viewport);
+	}
+	return result;
+}
+
+HRESULT Direct3DRMImpl::LoadTexture(const char* filename, IDirect3DRMTexture3** outTexture)
+{
+	MINIWIN_NOT_IMPLEMENTED();
+	return E_NOTIMPL;
 }
 
 HRESULT WINAPI Direct3DRMCreate(IDirect3DRM** direct3DRM)

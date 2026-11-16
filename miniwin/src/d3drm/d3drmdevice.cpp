@@ -32,9 +32,19 @@ Direct3DRMDevice2Impl::~Direct3DRMDevice2Impl()
 
 HRESULT Direct3DRMDevice2Impl::QueryInterface(const GUID& riid, void** ppvObject)
 {
+	if (SDL_memcmp(&riid, &IID_IDirect3DRMDevice, sizeof(riid)) == 0) {
+		this->IUnknown::AddRef();
+		*ppvObject = static_cast<IDirect3DRMDevice*>(this);
+		return DD_OK;
+	}
 	if (SDL_memcmp(&riid, &IID_IDirect3DRMDevice2, sizeof(riid)) == 0) {
 		this->IUnknown::AddRef();
 		*ppvObject = static_cast<IDirect3DRMDevice2*>(this);
+		return DD_OK;
+	}
+	if (SDL_memcmp(&riid, &IID_IDirect3DRMDevice3, sizeof(riid)) == 0) {
+		this->IUnknown::AddRef();
+		*ppvObject = static_cast<IDirect3DRMDevice3*>(this);
 		return DD_OK;
 	}
 	else if (SDL_memcmp(&riid, &IID_IDirect3DRMMiniwinDevice, sizeof(riid)) == 0) {
@@ -219,4 +229,25 @@ bool Direct3DRMDevice2Impl::ConvertRenderToWindowCoordinates(Sint32 inX, Sint32 
 	outY = static_cast<Sint32>((inY * m_viewportTransform.scale + m_viewportTransform.offsetY) / density);
 
 	return true;
+}
+
+// IDirect3DRMDevice3 interface
+HRESULT Direct3DRMDevice2Impl::GetDirect3DDevice2(IDirect3DDevice2** d3dDevice)
+{
+	if (!d3dDevice) {
+		return DDERR_INVALIDPARAMS;
+	}
+	m_renderer->AddRef();
+	*d3dDevice = static_cast<IDirect3DDevice2*>(m_renderer);
+	return DD_OK;
+}
+
+HRESULT Direct3DRMDevice2Impl::FindPreferredTextureFormat(
+	DDBitDepths bitDepths,
+	DWORD flags,
+	LPDDPIXELFORMAT pixelFormat
+)
+{
+	MINIWIN_NOT_IMPLEMENTED();
+	return E_NOTIMPL;
 }

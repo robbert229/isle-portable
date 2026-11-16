@@ -3,6 +3,7 @@
 #include "d3drmmesh_impl.h"
 #include "d3drmrenderer.h"
 #include "d3drmviewport_impl.h"
+#include "d3dviewport_impl.h"
 #include "ddraw_impl.h"
 #include "mathutils.h"
 #include "miniwin.h"
@@ -25,6 +26,26 @@ Direct3DRMViewportImpl::~Direct3DRMViewportImpl()
 		m_camera->Release();
 		m_camera = nullptr;
 	}
+	if (m_d3dViewport) {
+		m_d3dViewport->Release();
+		m_d3dViewport = nullptr;
+	}
+}
+
+HRESULT Direct3DRMViewportImpl::QueryInterface(const GUID& riid, void** ppvObject)
+{
+	if (SDL_memcmp(&riid, &IID_IDirect3DRMViewport, sizeof(GUID)) == 0) {
+		this->IUnknown::AddRef();
+		*ppvObject = static_cast<IDirect3DRMViewport*>(this);
+		return DD_OK;
+	}
+	if (SDL_memcmp(&riid, &IID_IDirect3DRMViewport2, sizeof(GUID)) == 0) {
+		this->IUnknown::AddRef();
+		*ppvObject = static_cast<IDirect3DRMViewport2*>(this);
+		return DD_OK;
+	}
+	MINIWIN_NOT_IMPLEMENTED();
+	return E_NOINTERFACE;
 }
 
 static void D3DRMMatrixMultiply(D3DRMMATRIX4D out, const D3DRMMATRIX4D a, const D3DRMMATRIX4D b)
@@ -852,4 +873,54 @@ HRESULT Direct3DRMViewportImpl::Pick(float x, float y, LPDIRECT3DRMPICKEDARRAY* 
 void Direct3DRMViewportImpl::CloseDevice()
 {
 	m_renderer = nullptr;
+}
+
+// IDirect3DRMViewport2 interface
+HRESULT Direct3DRMViewportImpl::Clear(DWORD flags)
+{
+	MINIWIN_NOT_IMPLEMENTED();
+	return E_NOTIMPL;
+}
+
+HRESULT Direct3DRMViewportImpl::Render(IDirect3DRMFrame3* frame)
+{
+	return Render(static_cast<IDirect3DRMFrame*>(frame));
+}
+
+HRESULT Direct3DRMViewportImpl::SetCamera(IDirect3DRMFrame3* camera)
+{
+	return SetCamera(static_cast<IDirect3DRMFrame*>(camera));
+}
+
+HRESULT Direct3DRMViewportImpl::GetCamera(IDirect3DRMFrame3** camera)
+{
+	IDirect3DRMFrame* frame;
+	HRESULT result = GetCamera(&frame);
+	*camera = frame ? static_cast<Direct3DRMFrameImpl*>(frame) : nullptr;
+	return result;
+}
+
+LONG Direct3DRMViewportImpl::GetX()
+{
+	MINIWIN_NOT_IMPLEMENTED();
+	return 0;
+}
+
+LONG Direct3DRMViewportImpl::GetY()
+{
+	MINIWIN_NOT_IMPLEMENTED();
+	return 0;
+}
+
+HRESULT Direct3DRMViewportImpl::GetDirect3DViewport(IDirect3DViewport** viewport)
+{
+	if (!viewport) {
+		return DDERR_INVALIDPARAMS;
+	}
+	if (!m_d3dViewport) {
+		m_d3dViewport = static_cast<IDirect3DViewport*>(new Direct3DViewportImpl);
+	}
+	m_d3dViewport->AddRef();
+	*viewport = m_d3dViewport;
+	return DD_OK;
 }

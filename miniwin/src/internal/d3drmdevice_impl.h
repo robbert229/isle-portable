@@ -7,7 +7,7 @@
 
 #include <SDL3/SDL.h>
 
-struct Direct3DRMDevice2Impl : public Direct3DRMObjectBaseImpl<IDirect3DRMDevice2>, public IDirect3DRMMiniwinDevice {
+struct Direct3DRMDevice2Impl : public Direct3DRMObjectBaseImpl<IDirect3DRMDevice3>, public IDirect3DRMMiniwinDevice {
 	Direct3DRMDevice2Impl(DWORD width, DWORD height, Direct3DRMRenderer* renderer);
 	~Direct3DRMDevice2Impl() override;
 	HRESULT QueryInterface(const GUID& riid, void** ppvObject) override;
@@ -31,6 +31,9 @@ struct Direct3DRMDevice2Impl : public Direct3DRMObjectBaseImpl<IDirect3DRMDevice
 	HRESULT Update() override;
 	HRESULT AddViewport(IDirect3DRMViewport* viewport) override;
 	HRESULT GetViewports(IDirect3DRMViewportArray** ppViewportArray) override;
+	// IDirect3DRMDevice3 interface
+	HRESULT GetDirect3DDevice2(IDirect3DDevice2** d3dDevice) override;
+	HRESULT FindPreferredTextureFormat(DDBitDepths bitDepths, DWORD flags, LPDDPIXELFORMAT pixelFormat) override;
 
 	// IDirect3DRMMiniwinDevice interface
 	bool ConvertEventToRenderCoordinates(SDL_Event* event) override;

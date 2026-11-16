@@ -1,4 +1,5 @@
 #include "d3drmlight_impl.h"
+#include "miniwin.h"
 
 Direct3DRMLightImpl::Direct3DRMLightImpl(D3DRMLIGHTTYPE type, float r, float g, float b) : m_type(type)
 {
@@ -20,4 +21,34 @@ D3DRMLIGHTTYPE Direct3DRMLightImpl::GetType()
 D3DCOLOR Direct3DRMLightImpl::GetColor()
 {
 	return m_color;
+}
+
+HRESULT Direct3DRMLightImpl::SetColor(D3DCOLOR color)
+{
+	MINIWIN_NOT_IMPLEMENTED();
+	return E_NOTIMPL;
+}
+
+HRESULT Direct3DRMLightImpl::SetRange(D3DVALUE range)
+{
+	MINIWIN_NOT_IMPLEMENTED();
+	return E_NOTIMPL;
+}
+
+HRESULT Direct3DRMLightImpl::SetUmbra(D3DVALUE angle)
+{
+	MINIWIN_NOT_IMPLEMENTED();
+	return E_NOTIMPL;
+}
+
+HRESULT Direct3DRMLightImpl::SetPenumbra(D3DVALUE angle)
+{
+	MINIWIN_NOT_IMPLEMENTED();
+	return E_NOTIMPL;
+}
+
+HRESULT Direct3DRMLightImpl::SetEnableFrame(IDirect3DRMFrame* frame)
+{
+	MINIWIN_NOT_IMPLEMENTED();
+	return E_NOTIMPL;
 }

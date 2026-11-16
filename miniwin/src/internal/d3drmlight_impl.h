@@ -6,7 +6,12 @@
 
 struct Direct3DRMLightImpl : public Direct3DRMObjectBaseImpl<IDirect3DRMLight> {
 	Direct3DRMLightImpl(D3DRMLIGHTTYPE type, float r, float g, float b);
+	HRESULT SetColor(D3DCOLOR color) override;
 	HRESULT SetColorRGB(float r, float g, float b) override;
+	HRESULT SetRange(D3DVALUE range) override;
+	HRESULT SetUmbra(D3DVALUE angle) override;
+	HRESULT SetPenumbra(D3DVALUE angle) override;
+	HRESULT SetEnableFrame(IDirect3DRMFrame* frame) override;
 	D3DRMLIGHTTYPE GetType() override;
 	D3DCOLOR GetColor() override;
 

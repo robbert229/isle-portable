@@ -19,9 +19,10 @@ struct DeferredDrawCommand {
 class Direct3DRMDeviceImpl;
 class Direct3DRMFrameImpl;
 
-struct Direct3DRMViewportImpl : public Direct3DRMObjectBaseImpl<IDirect3DRMViewport> {
+struct Direct3DRMViewportImpl : public Direct3DRMObjectBaseImpl<IDirect3DRMViewport2> {
 	Direct3DRMViewportImpl(DWORD width, DWORD height, Direct3DRMRenderer* renderer);
 	~Direct3DRMViewportImpl() override;
+	HRESULT QueryInterface(const GUID& riid, void** ppvObject) override;
 	HRESULT Render(IDirect3DRMFrame* group) override;
 	/**
 	 * @brief Blit the render back to our backbuffer
@@ -43,6 +44,14 @@ struct Direct3DRMViewportImpl : public Direct3DRMObjectBaseImpl<IDirect3DRMViewp
 	HRESULT Transform(D3DRMVECTOR4D* screen, D3DVECTOR* world) override;
 	HRESULT InverseTransform(D3DVECTOR* world, D3DRMVECTOR4D* screen) override;
 	HRESULT Pick(float x, float y, LPDIRECT3DRMPICKEDARRAY* pickedArray) override;
+	// IDirect3DRMViewport2 interface
+	HRESULT Clear(DWORD flags) override;
+	HRESULT Render(IDirect3DRMFrame3* frame) override;
+	HRESULT SetCamera(IDirect3DRMFrame3* camera) override;
+	HRESULT GetCamera(IDirect3DRMFrame3** camera) override;
+	LONG GetX() override;
+	LONG GetY() override;
+	HRESULT GetDirect3DViewport(IDirect3DViewport** viewport) override;
 	void CloseDevice();
 	void UpdateProjectionMatrix();
 
@@ -62,6 +71,7 @@ private:
 	D3DRMMATRIX4D m_inverseProjectionMatrix;
 	IDirect3DRMFrame* m_rootFrame = nullptr;
 	IDirect3DRMFrame* m_camera = nullptr;
+	IDirect3DViewport* m_d3dViewport = nullptr;
 	D3DVALUE m_front = 1.f;
 	D3DVALUE m_back = 10.f;
 	D3DVALUE m_field = 0.5f;

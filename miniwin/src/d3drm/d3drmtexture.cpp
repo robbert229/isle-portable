@@ -63,9 +63,19 @@ Direct3DRMTextureImpl::~Direct3DRMTextureImpl()
 
 HRESULT Direct3DRMTextureImpl::QueryInterface(const GUID& riid, void** ppvObject)
 {
+	if (SDL_memcmp(&riid, &IID_IDirect3DRMTexture, sizeof(GUID)) == 0) {
+		this->IUnknown::AddRef();
+		*ppvObject = static_cast<IDirect3DRMTexture*>(this);
+		return DD_OK;
+	}
 	if (SDL_memcmp(&riid, &IID_IDirect3DRMTexture2, sizeof(GUID)) == 0) {
 		this->IUnknown::AddRef();
 		*ppvObject = static_cast<IDirect3DRMTexture2*>(this);
+		return DD_OK;
+	}
+	if (SDL_memcmp(&riid, &IID_IDirect3DRMTexture3, sizeof(GUID)) == 0) {
+		this->IUnknown::AddRef();
+		*ppvObject = static_cast<IDirect3DRMTexture3*>(this);
 		return DD_OK;
 	}
 	MINIWIN_NOT_IMPLEMENTED();
@@ -79,4 +89,29 @@ HRESULT Direct3DRMTextureImpl::Changed(BOOL pixels, BOOL palette)
 	}
 	m_version++;
 	return DD_OK;
+}
+
+// IDirect3DRMTexture3 interface
+D3DRMIMAGE* Direct3DRMTextureImpl::GetImage()
+{
+	MINIWIN_NOT_IMPLEMENTED();
+	return nullptr;
+}
+
+HRESULT Direct3DRMTextureImpl::SetDecalTransparency(BOOL transparency)
+{
+	MINIWIN_NOT_IMPLEMENTED();
+	return E_NOTIMPL;
+}
+
+HRESULT Direct3DRMTextureImpl::SetDecalTransparentColor(D3DCOLOR color)
+{
+	MINIWIN_NOT_IMPLEMENTED();
+	return E_NOTIMPL;
+}
+
+HRESULT Direct3DRMTextureImpl::GenerateMIPMap(DWORD flags)
+{
+	MINIWIN_NOT_IMPLEMENTED();
+	return E_NOTIMPL;
 }

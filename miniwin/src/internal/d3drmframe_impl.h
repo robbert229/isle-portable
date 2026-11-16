@@ -7,7 +7,7 @@ class Direct3DRMLightArrayImpl;
 class Direct3DRMVisualArrayImpl;
 class Direct3DRMFrameArrayImpl;
 
-struct Direct3DRMFrameImpl : public Direct3DRMObjectBaseImpl<IDirect3DRMFrame2> {
+struct Direct3DRMFrameImpl : public Direct3DRMObjectBaseImpl<IDirect3DRMFrame3> {
 	Direct3DRMFrameImpl(Direct3DRMFrameImpl* parent = nullptr);
 	~Direct3DRMFrameImpl() override;
 	HRESULT QueryInterface(const GUID& riid, void** ppvObject) override;
@@ -28,6 +28,43 @@ struct Direct3DRMFrameImpl : public Direct3DRMObjectBaseImpl<IDirect3DRMFrame2> 
 	HRESULT SetColorRGB(float r, float g, float b) override;
 	HRESULT SetMaterialMode(D3DRMMATERIALMODE mode) override;
 	HRESULT GetChildren(IDirect3DRMFrameArray** children) override;
+	// IDirect3DRMFrame3 interface
+	HRESULT AddChild(IDirect3DRMFrame3* child) override;
+	HRESULT DeleteChild(IDirect3DRMFrame3* child) override;
+	HRESULT GetPosition(IDirect3DRMFrame3* reference, D3DVECTOR* position) override;
+	HRESULT AddTranslation(D3DRMCOMBINETYPE combine, D3DVALUE x, D3DVALUE y, D3DVALUE z) override;
+	HRESULT AddScale(D3DRMCOMBINETYPE combine, D3DVALUE sx, D3DVALUE sy, D3DVALUE sz) override;
+	HRESULT AddRotation(D3DRMCOMBINETYPE combine, D3DVALUE x, D3DVALUE y, D3DVALUE z, D3DVALUE theta) override;
+	HRESULT AddVisual(IUnknown* visual) override;
+	HRESULT GetParent(IDirect3DRMFrame3** parent) override;
+	HRESULT GetScene(IDirect3DRMFrame3** scene) override;
+	HRESULT GetTransform(IDirect3DRMFrame3* reference, D3DRMMATRIX4D matrix) override;
+	HRESULT GetOrientation(IDirect3DRMFrame3* reference, D3DVECTOR* dir, D3DVECTOR* up) override;
+	HRESULT GetVisuals(DWORD* count, IUnknown** visuals) override;
+	HRESULT InverseTransform(D3DVECTOR* d, D3DVECTOR* s) override;
+	HRESULT Load(void* filename, void* name, D3DRMLOADOPTIONS flags, D3DRMLOADTEXTURE3CALLBACK callback, void* arg)
+		override;
+	HRESULT LookAt(IDirect3DRMFrame3* target, IDirect3DRMFrame3* reference, D3DRMFRAMECONSTRAINT constraint) override;
+	HRESULT DeleteVisual(IUnknown* visual) override;
+	D3DCOLOR GetSceneBackground() override;
+	HRESULT SetSceneBackground(D3DCOLOR color) override;
+	HRESULT SetSceneFogEnable(BOOL enable) override;
+	HRESULT SetSceneFogColor(D3DCOLOR color) override;
+	HRESULT SetSceneFogMode(D3DRMFOGMODE mode) override;
+	HRESULT SetSceneFogParams(D3DVALUE start, D3DVALUE end, D3DVALUE density) override;
+	HRESULT SetOrientation(
+		IDirect3DRMFrame3* reference,
+		D3DVALUE dx,
+		D3DVALUE dy,
+		D3DVALUE dz,
+		D3DVALUE ux,
+		D3DVALUE uy,
+		D3DVALUE uz
+	) override;
+	HRESULT SetPosition(IDirect3DRMFrame3* reference, D3DVALUE x, D3DVALUE y, D3DVALUE z) override;
+	HRESULT SetSortMode(D3DRMSORTMODE mode) override;
+	HRESULT Transform(D3DVECTOR* d, D3DVECTOR* s) override;
+	HRESULT SetSceneFogMethod(DWORD flags) override;
 
 	Direct3DRMFrameImpl* m_parent{};
 	D3DRMMATRIX4D m_transform =
