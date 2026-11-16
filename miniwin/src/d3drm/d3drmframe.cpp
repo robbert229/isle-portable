@@ -329,8 +329,11 @@ HRESULT Direct3DRMFrameImpl::AddRotation(D3DRMCOMBINETYPE combine, D3DVALUE x, D
 
 HRESULT Direct3DRMFrameImpl::AddVisual(IUnknown* visual)
 {
-	MINIWIN_NOT_IMPLEMENTED();
-	return E_NOTIMPL;
+	auto* asVisual = dynamic_cast<IDirect3DRMVisual*>(visual);
+	if (!asVisual) {
+		return DDERR_INVALIDPARAMS;
+	}
+	return AddVisual(asVisual);
 }
 
 HRESULT Direct3DRMFrameImpl::GetParent(IDirect3DRMFrame3** parent)
@@ -380,8 +383,20 @@ HRESULT Direct3DRMFrameImpl::GetOrientation(IDirect3DRMFrame3* reference, D3DVEC
 
 HRESULT Direct3DRMFrameImpl::GetVisuals(DWORD* count, IUnknown** visuals)
 {
-	MINIWIN_NOT_IMPLEMENTED();
-	return E_NOTIMPL;
+	if (!count) {
+		return DDERR_INVALIDPARAMS;
+	}
+	DWORD size = m_visuals->GetSize();
+	if (visuals) {
+		// The caller sized the array from an earlier call without one.
+		for (DWORD i = 0; i < size && i < *count; i++) {
+			IDirect3DRMVisual* visual = nullptr;
+			m_visuals->GetElement(i, &visual);
+			visuals[i] = visual;
+		}
+	}
+	*count = size;
+	return DD_OK;
 }
 
 HRESULT Direct3DRMFrameImpl::InverseTransform(D3DVECTOR* d, D3DVECTOR* s)
@@ -417,8 +432,11 @@ HRESULT Direct3DRMFrameImpl::LookAt(
 
 HRESULT Direct3DRMFrameImpl::DeleteVisual(IUnknown* visual)
 {
-	MINIWIN_NOT_IMPLEMENTED();
-	return E_NOTIMPL;
+	auto* asVisual = dynamic_cast<IDirect3DRMVisual*>(visual);
+	if (!asVisual) {
+		return DDERR_INVALIDPARAMS;
+	}
+	return DeleteVisual(asVisual);
 }
 
 D3DCOLOR Direct3DRMFrameImpl::GetSceneBackground()
