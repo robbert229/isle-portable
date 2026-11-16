@@ -478,7 +478,9 @@ struct IDirect3DRMViewport : public IDirect3DRMObject {
 	virtual HRESULT Transform(D3DRMVECTOR4D* screen, D3DVECTOR* world) = 0;
 	virtual HRESULT InverseTransform(D3DVECTOR* world, D3DRMVECTOR4D* screen) = 0;
 	virtual HRESULT Pick(float x, float y, LPDIRECT3DRMPICKEDARRAY* pickedArray) = 0;
+	virtual HRESULT GetDirect3DViewport(IDirect3DViewport** viewport) = 0;
 };
+typedef IDirect3DRMViewport* LPDIRECT3DRMVIEWPORT;
 
 struct IDirect3DRMAnimationSet2 : public IDirect3DRMObject {
 	virtual HRESULT Load(
@@ -500,7 +502,6 @@ struct IDirect3DRMViewport2 : public IDirect3DRMViewport {
 	virtual HRESULT GetCamera(IDirect3DRMFrame3** camera) = 0;
 	virtual LONG GetX() = 0;
 	virtual LONG GetY() = 0;
-	virtual HRESULT GetDirect3DViewport(IDirect3DViewport** viewport) = 0;
 };
 typedef IDirect3DRMViewport2* LPDIRECT3DRMVIEWPORT2;
 

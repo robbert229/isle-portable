@@ -44,6 +44,7 @@ struct Direct3DRMViewportImpl : public Direct3DRMObjectBaseImpl<IDirect3DRMViewp
 	HRESULT Transform(D3DRMVECTOR4D* screen, D3DVECTOR* world) override;
 	HRESULT InverseTransform(D3DVECTOR* world, D3DRMVECTOR4D* screen) override;
 	HRESULT Pick(float x, float y, LPDIRECT3DRMPICKEDARRAY* pickedArray) override;
+	HRESULT GetDirect3DViewport(IDirect3DViewport** viewport) override;
 	// IDirect3DRMViewport2 interface
 	HRESULT Clear(DWORD flags) override;
 	HRESULT Render(IDirect3DRMFrame3* frame) override;
@@ -51,7 +52,6 @@ struct Direct3DRMViewportImpl : public Direct3DRMObjectBaseImpl<IDirect3DRMViewp
 	HRESULT GetCamera(IDirect3DRMFrame3** camera) override;
 	LONG GetX() override;
 	LONG GetY() override;
-	HRESULT GetDirect3DViewport(IDirect3DViewport** viewport) override;
 	void CloseDevice();
 	void UpdateProjectionMatrix();
 
