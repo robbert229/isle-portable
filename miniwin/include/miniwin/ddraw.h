@@ -255,6 +255,7 @@ struct DDSCAPS {
 };
 typedef struct DDSCAPS* LPDDSCAPS;
 
+#define DDSCAPS2_TEXTUREMANAGE 0x00000010
 struct DDSCAPS2 {
 	DDSCapsFlags dwCaps;
 	DWORD dwCaps2;

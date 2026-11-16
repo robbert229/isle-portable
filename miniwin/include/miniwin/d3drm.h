@@ -153,6 +153,11 @@ enum class D3DRMUSERVISUALREASON {
 #define D3DRMFOGMETHOD_TABLE 0x2
 #define D3DRMFOGMETHOD_ANY 0x4
 
+#define D3DRMFPTF_ALPHA 0x1
+#define D3DRMFPTF_NOALPHA 0x2
+#define D3DRMFPTF_PALETTIZED 0x4
+#define D3DRMFPTF_ANYDEPTH 0x8
+
 #define D3DRMCLEAR_TARGET 0x1
 #define D3DRMCLEAR_ZBUFFER 0x2
 #define D3DRMCLEAR_DIRTYRECTS 0x4
@@ -309,6 +314,7 @@ struct IDirect3DRMMesh : public IDirect3DRMVisual {
 	virtual D3DCOLOR GetGroupColor(D3DRMGROUPINDEX index) = 0;
 	virtual HRESULT GetVertices(D3DRMGROUPINDEX groupIndex, int startIndex, int count, D3DRMVERTEX* vertices) = 0;
 };
+typedef IDirect3DRMMesh* LPDIRECT3DRMMESH;
 
 struct IDirect3DRMFrame;
 struct IDirect3DRMMeshBuilder : public IDirect3DRMVisual {
@@ -341,6 +347,7 @@ struct IDirect3DRMLight : public IDirect3DRMObject {
 	virtual D3DRMLIGHTTYPE GetType() = 0;
 	virtual D3DCOLOR GetColor() = 0;
 };
+typedef IDirect3DRMLight* LPDIRECT3DRMLIGHT;
 
 struct IDirect3DRMArray : public IUnknown {
 	virtual DWORD GetSize() = 0;
