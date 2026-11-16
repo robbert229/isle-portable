@@ -179,6 +179,11 @@ HRESULT Direct3DRMImpl::CreateDeviceFromSurface(
 		SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Failed to create a renderer for the selected device GUID");
 		return E_NOINTERFACE;
 	}
+	IDirect3D3* d3d = nullptr;
+	if (dd->QueryInterface(IID_IDirect3D3, (void**) &d3d) == DD_OK) {
+		DDRenderer->SetDirect3D(d3d);
+		d3d->Release();
+	}
 	*outDevice =
 		static_cast<IDirect3DRMDevice2*>(new Direct3DRMDevice2Impl(DDSDesc.dwWidth, DDSDesc.dwHeight, DDRenderer));
 	return DD_OK;

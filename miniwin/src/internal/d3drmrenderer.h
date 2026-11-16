@@ -85,6 +85,8 @@ public:
 	virtual void SetDither(bool dither) = 0;
 	virtual void SetPalette(SDL_Palette* palette) {}
 	virtual bool UsesPalettedSurfaces() const { return false; }
+	// The IDirect3D3 (the DirectDraw object) the device was created from.
+	void SetDirect3D(IDirect3D3* d3d);
 
 protected:
 	using DestroyCallback = void (*)(Direct3DRMRenderer* renderer, Uint32 id);
@@ -104,6 +106,7 @@ private:
 	static void OnObjectDestroyed(IDirect3DRMObject* object, void* arg);
 
 	std::unordered_set<DestroyCallbackContext*> m_destroyCallbacks;
+	IDirect3D3* m_direct3d = nullptr;
 };
 
 Direct3DRMRenderer* CreateDirect3DRMRenderer(

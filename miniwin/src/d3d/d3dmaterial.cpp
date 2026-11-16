@@ -14,12 +14,23 @@ HRESULT Direct3DMaterialImpl::QueryInterface(const GUID& riid, void** ppvObject)
 
 HRESULT Direct3DMaterialImpl::SetMaterial(LPD3DMATERIAL data)
 {
-	MINIWIN_NOT_IMPLEMENTED();
-	return DDERR_UNSUPPORTED;
+	if (!data) {
+		return DDERR_INVALIDPARAMS;
+	}
+	m_material = *data;
+	return DD_OK;
 }
 
 HRESULT Direct3DMaterialImpl::GetHandle(IDirect3DDevice3* device, LPD3DMATERIALHANDLE handle)
 {
-	MINIWIN_NOT_IMPLEMENTED();
-	return DDERR_UNSUPPORTED;
+	if (!handle) {
+		return DDERR_INVALIDPARAMS;
+	}
+	// A non-zero handle, unique per material; no renderer reads it yet.
+	static D3DMATERIALHANDLE nextHandle = 1;
+	if (!m_handle) {
+		m_handle = nextHandle++;
+	}
+	*handle = m_handle;
+	return DD_OK;
 }

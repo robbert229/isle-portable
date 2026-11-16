@@ -37,6 +37,20 @@ Direct3DRMRenderer::~Direct3DRMRenderer()
 		ctx->object->DeleteDestroyCallback(OnObjectDestroyed, ctx);
 		delete ctx;
 	}
+	if (m_direct3d) {
+		m_direct3d->Release();
+	}
+}
+
+void Direct3DRMRenderer::SetDirect3D(IDirect3D3* d3d)
+{
+	if (d3d) {
+		d3d->AddRef();
+	}
+	if (m_direct3d) {
+		m_direct3d->Release();
+	}
+	m_direct3d = d3d;
 }
 
 HRESULT Direct3DRMRenderer::QueryInterface(const GUID& riid, void** ppvObject)
@@ -57,8 +71,15 @@ HRESULT Direct3DRMRenderer::QueryInterface(const GUID& riid, void** ppvObject)
 
 HRESULT Direct3DRMRenderer::GetDirect3D(IDirect3D3** d3d)
 {
-	MINIWIN_NOT_IMPLEMENTED();
-	return DDERR_UNSUPPORTED;
+	if (!d3d) {
+		return DDERR_INVALIDPARAMS;
+	}
+	*d3d = m_direct3d;
+	if (!m_direct3d) {
+		return DDERR_GENERIC;
+	}
+	m_direct3d->AddRef();
+	return DD_OK;
 }
 
 HRESULT Direct3DRMRenderer::SetCurrentViewport(IDirect3DViewport3* viewport)
