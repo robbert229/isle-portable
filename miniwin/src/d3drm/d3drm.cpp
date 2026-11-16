@@ -360,3 +360,41 @@ D3DCOLOR D3DRMCreateColorRGBA(D3DVALUE red, D3DVALUE green, D3DVALUE blue, D3DVA
 
 	return (a << 24) | (r << 16) | (g << 8) | b;
 }
+
+D3DVECTOR* D3DRMVectorRandom(D3DVECTOR* d)
+{
+	float length;
+	do {
+		d->x = SDL_randf() * 2.0f - 1.0f;
+		d->y = SDL_randf() * 2.0f - 1.0f;
+		d->z = SDL_randf() * 2.0f - 1.0f;
+		length = d->x * d->x + d->y * d->y + d->z * d->z;
+	} while (length > 1.0f || length < 1e-6f);
+	length = SDL_sqrtf(length);
+	d->x /= length;
+	d->y /= length;
+	d->z /= length;
+	return d;
+}
+
+D3DVECTOR* D3DRMVectorRotate(D3DVECTOR* r, D3DVECTOR* v, D3DVECTOR* axis, D3DVALUE theta)
+{
+	// Rodrigues' rotation about the normalised axis.
+	float length = SDL_sqrtf(axis->x * axis->x + axis->y * axis->y + axis->z * axis->z);
+	if (length < 1e-6f) {
+		*r = *v;
+		return r;
+	}
+	const float kx = axis->x / length;
+	const float ky = axis->y / length;
+	const float kz = axis->z / length;
+	const float c = SDL_cosf(theta);
+	const float s = SDL_sinf(theta);
+	const float dot = kx * v->x + ky * v->y + kz * v->z;
+	const D3DVECTOR in = *v;
+	r->x = in.x * c + (ky * in.z - kz * in.y) * s + kx * dot * (1.0f - c);
+	r->y = in.y * c + (kz * in.x - kx * in.z) * s + ky * dot * (1.0f - c);
+	r->z = in.z * c + (kx * in.y - ky * in.x) * s + kz * dot * (1.0f - c);
+	return r;
+}
+

@@ -626,3 +626,9 @@ typedef IDirect3DRM3* LPDIRECT3DRM3;
 HRESULT WINAPI Direct3DRMCreate(IDirect3DRM** direct3DRM);
 
 D3DCOLOR D3DRMCreateColorRGBA(D3DVALUE red, D3DVALUE green, D3DVALUE blue, D3DVALUE alpha);
+
+// A random unit vector.
+D3DVECTOR* D3DRMVectorRandom(D3DVECTOR* d);
+
+// v rotated by theta radians about axis, in r.
+D3DVECTOR* D3DRMVectorRotate(D3DVECTOR* r, D3DVECTOR* v, D3DVECTOR* axis, D3DVALUE theta);

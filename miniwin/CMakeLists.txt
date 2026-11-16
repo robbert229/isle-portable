@@ -4,6 +4,7 @@ target_include_directories(miniwin-headers INTERFACE $<BUILD_INTERFACE:${CMAKE_C
 add_library(miniwin STATIC EXCLUDE_FROM_ALL
   # Core
   src/windows/windows.cpp
+  src/windows/windowmessages.cpp
 
   # DDraw
   src/ddraw/ddpalette.cpp

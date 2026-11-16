@@ -169,12 +169,14 @@ ENABLE_BITMASK_OPERATORS(DDBltFastFlags)
 #define DDLOCK_SURFACEMEMORYPTR DDLockFlags::SURFACEMEMORYPTR
 #define DDLOCK_WAIT DDLockFlags::WAIT
 #define DDLOCK_WRITEONLY DDLockFlags::WRITEONLY
+#define DDLOCK_NOSYSLOCK DDLockFlags::NOSYSLOCK
 #define DDLOCK_READONLY DDLockFlags::READONLY
 enum class DDLockFlags : uint32_t {
 	SURFACEMEMORYPTR = 0,
 	WAIT = 1 << 0,
 	READONLY = 1 << 4,
 	WRITEONLY = 1 << 5,
+	NOSYSLOCK = 1 << 11,
 };
 ENABLE_BITMASK_OPERATORS(DDLockFlags)
 
@@ -472,6 +474,7 @@ HRESULT DirectDrawCreate(LPGUID lpGuid, LPDIRECTDRAW* lplpDD, IUnknown* pUnkOute
 
 typedef BOOL (*LPDDENUMCALLBACKA)(GUID*, LPSTR, LPSTR, LPVOID);
 HRESULT DirectDrawEnumerate(LPDDENUMCALLBACKA cb, void* context);
+#define DirectDrawEnumerateA DirectDrawEnumerate
 
 UINT WINAPI GetSystemPaletteEntries(HDC hdc, UINT iStart, UINT cEntries, LPPALETTEENTRY pPalEntries);
 

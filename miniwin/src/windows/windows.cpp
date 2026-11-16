@@ -160,10 +160,67 @@ LONG SetWindowLong(HWND hWnd, int nIndex, LONG dwNewLong)
 	return 0;
 }
 
-int DeleteObject(void*)
+namespace {
+std::vector<RECT*>& Regions()
 {
+	static std::vector<RECT*> regions;
+	return regions;
+}
+} // namespace
+
+int DeleteObject(void* object)
+{
+	auto& regions = Regions();
+	for (auto it = regions.begin(); it != regions.end(); ++it) {
+		if (*it == object) {
+			delete *it;
+			regions.erase(it);
+			return 1;
+		}
+	}
 	MINIWIN_NOT_IMPLEMENTED();
 	return 1;
+}
+
+BOOL OffsetRect(LPRECT lprc, int dx, int dy)
+{
+	if (!lprc) {
+		return FALSE;
+	}
+	lprc->left += dx;
+	lprc->right += dx;
+	lprc->top += dy;
+	lprc->bottom += dy;
+	return TRUE;
+}
+
+HRGN CreateRectRgn(int x1, int y1, int x2, int y2)
+{
+	RECT* rect = new RECT{x1, y1, x2, y2};
+	Regions().push_back(rect);
+	return reinterpret_cast<HRGN>(rect);
+}
+
+DWORD GetRegionData(HRGN hrgn, DWORD nCount, LPRGNDATA lpRgnData)
+{
+	const DWORD size = sizeof(RGNDATAHEADER) + sizeof(RECT);
+	if (!hrgn) {
+		return 0;
+	}
+	if (!lpRgnData) {
+		return size;
+	}
+	if (nCount < size) {
+		return 0;
+	}
+	const RECT* rect = reinterpret_cast<const RECT*>(hrgn);
+	lpRgnData->rdh.dwSize = sizeof(RGNDATAHEADER);
+	lpRgnData->rdh.iType = 1; // RDH_RECTANGLES
+	lpRgnData->rdh.nCount = 1;
+	lpRgnData->rdh.nRgnSize = sizeof(RECT);
+	lpRgnData->rdh.rcBound = *rect;
+	memcpy(lpRgnData->Buffer, rect, sizeof(RECT));
+	return size;
 }
 
 BOOL AdjustWindowRectEx(LPRECT lpRect, DWORD dwStyle, BOOL bMenu, DWORD dwExStyle)
