@@ -29,6 +29,12 @@ HRESULT IUnknown::QueryInterface(const GUID& riid, void** ppvObject)
 	return E_NOINTERFACE;
 }
 
+HRESULT IDirectDrawClipper::SetClipList(LPRGNDATA lpClipList, DWORD dwFlags)
+{
+	MINIWIN_NOT_IMPLEMENTED();
+	return DDERR_UNSUPPORTED;
+}
+
 HRESULT IDirectDrawClipper::SetHWnd(DWORD unnamedParam1, HWND hWnd)
 {
 	return DD_OK;

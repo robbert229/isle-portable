@@ -103,6 +103,20 @@ struct RECT {
 };
 typedef RECT* LPRECT;
 
+struct RGNDATAHEADER {
+	DWORD dwSize;
+	DWORD iType;
+	DWORD nCount;
+	DWORD nRgnSize;
+	RECT rcBound;
+};
+
+struct RGNDATA {
+	RGNDATAHEADER rdh;
+	char Buffer[1];
+};
+typedef RGNDATA* LPRGNDATA;
+
 struct BITMAPINFOHEADER {
 	DWORD biSize;
 	LONG biWidth;

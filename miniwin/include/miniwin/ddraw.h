@@ -359,6 +359,7 @@ struct IDirectDrawPalette : virtual public IUnknown {
 typedef struct IDirectDrawPalette* LPDIRECTDRAWPALETTE;
 
 struct IDirectDrawClipper : virtual public IUnknown {
+	virtual HRESULT SetClipList(LPRGNDATA lpClipList, DWORD dwFlags);
 	virtual HRESULT SetHWnd(DWORD unnamedParam1, HWND hWnd);
 };
 typedef IDirectDrawClipper* LPDIRECTDRAWCLIPPER;
