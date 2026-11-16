@@ -61,6 +61,10 @@ struct Direct3DRMImpl : virtual public IDirect3DRM3 {
 		IDirect3DRMViewport2** outViewport
 	) override;
 	HRESULT LoadTexture(const char* filename, IDirect3DRMTexture3** outTexture) override;
+	HRESULT CreateMeshBuilder(IDirect3DRMMeshBuilder3** outMeshBuilder) override;
+	HRESULT CreateAnimationSet(IDirect3DRMAnimationSet2** outAnimationSet) override;
+	HRESULT CreateUserVisual(D3DRMUSERVISUALCALLBACK callback, void* arg, IDirect3DRMUserVisual** outUserVisual)
+		override;
 };
 
 template <typename InterfaceType, typename ActualType, typename ArrayInterface>

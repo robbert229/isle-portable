@@ -142,6 +142,13 @@ typedef DWORD D3DRMLOADOPTIONS;
 #define D3DRMLOAD_INSTANCEBYREFERENCE 0x100
 #define D3DRMLOAD_INSTANCEBYCOPYING 0x200
 
+#define D3DRMUSERVISUAL_CANSEE D3DRMUSERVISUALREASON::CANSEE
+#define D3DRMUSERVISUAL_RENDER D3DRMUSERVISUALREASON::RENDER
+enum class D3DRMUSERVISUALREASON {
+	CANSEE,
+	RENDER
+};
+
 #define D3DRMFOGMETHOD_VERTEX 0x1
 #define D3DRMFOGMETHOD_TABLE 0x2
 #define D3DRMFOGMETHOD_ANY 0x4
@@ -166,6 +173,10 @@ DEFINE_GUID(IID_IDirect3DRMViewport, 0xeb16cb02, 0xd271, 0x11ce, 0xac, 0x48, 0x0
 DEFINE_GUID(IID_IDirect3DRMViewport2, 0x4a1b1be6, 0xbfed, 0x11d1, 0x8e, 0xd8, 0x00, 0xa0, 0xc9, 0x67, 0xa4, 0x82);
 DEFINE_GUID(IID_IDirect3DRMMesh, 0xa3a80d01, 0x6e12, 0x11cf, 0xac, 0x4a, 0x00, 0x00, 0xc0, 0x38, 0x25, 0xa1);
 DEFINE_GUID(IID_IDirect3DRMMeshBuilder, 0xa3a80d02, 0x6e12, 0x11cf, 0xac, 0x4a, 0x00, 0x00, 0xc0, 0x38, 0x25, 0xa1);
+DEFINE_GUID(IID_IDirect3DRMMeshBuilder2, 0x4516ec77, 0x8f20, 0x11d0, 0x9b, 0x6d, 0x00, 0x00, 0xc0, 0x78, 0x1b, 0xc3);
+DEFINE_GUID(IID_IDirect3DRMMeshBuilder3, 0x4516ec82, 0x8f20, 0x11d0, 0x9b, 0x6d, 0x00, 0x00, 0xc0, 0x78, 0x1b, 0xc3);
+DEFINE_GUID(IID_IDirect3DRMAnimationSet2, 0xff6b7f79, 0xa40e, 0x11d1, 0x91, 0xf9, 0x00, 0x00, 0xf8, 0x75, 0x8e, 0x66);
+DEFINE_GUID(IID_IDirect3DRMUserVisual, 0x59163de0, 0x6d43, 0x11cf, 0xac, 0x4a, 0x00, 0x00, 0xc0, 0x38, 0x25, 0xa1);
 DEFINE_GUID(IID_IDirect3DRMTexture, 0xeb16cb09, 0xd271, 0x11ce, 0xac, 0x48, 0x00, 0x00, 0xc0, 0x38, 0x25, 0xa1);
 DEFINE_GUID(IID_IDirect3DRMTexture2, 0x120f30c0, 0x1629, 0x11d0, 0x94, 0x1c, 0x00, 0x80, 0xc8, 0x0c, 0xfa, 0x7b);
 DEFINE_GUID(IID_IDirect3DRMTexture3, 0xff6b7f73, 0xa40e, 0x11d1, 0x91, 0xf9, 0x00, 0x00, 0xf8, 0x75, 0x8e, 0x66);
@@ -300,6 +311,26 @@ struct IDirect3DRMMesh : public IDirect3DRMVisual {
 };
 
 struct IDirect3DRMFrame;
+struct IDirect3DRMMeshBuilder : public IDirect3DRMVisual {
+	virtual HRESULT SetPerspective(BOOL perspective) = 0;
+	virtual HRESULT CreateMesh(IDirect3DRMMesh** mesh) = 0;
+};
+typedef IDirect3DRMMeshBuilder* LPDIRECT3DRMMESHBUILDER;
+
+struct IDirect3DRMMeshBuilder2 : public IDirect3DRMMeshBuilder {};
+typedef IDirect3DRMMeshBuilder2* LPDIRECT3DRMMESHBUILDER2;
+
+struct IDirect3DRMMeshBuilder3 : public IDirect3DRMMeshBuilder2 {
+	virtual HRESULT Load(
+		void* filename,
+		void* name,
+		D3DRMLOADOPTIONS flags,
+		D3DRMLOADTEXTURE3CALLBACK callback,
+		void* arg
+	) = 0;
+};
+typedef IDirect3DRMMeshBuilder3* LPDIRECT3DRMMESHBUILDER3;
+
 struct IDirect3DRMLight : public IDirect3DRMObject {
 	virtual HRESULT SetColor(D3DCOLOR color) = 0;
 	virtual HRESULT SetColorRGB(float r, float g, float b) = 0;
@@ -442,6 +473,19 @@ struct IDirect3DRMViewport : public IDirect3DRMObject {
 	virtual HRESULT Pick(float x, float y, LPDIRECT3DRMPICKEDARRAY* pickedArray) = 0;
 };
 
+struct IDirect3DRMAnimationSet2 : public IDirect3DRMObject {
+	virtual HRESULT Load(
+		void* filename,
+		void* name,
+		D3DRMLOADOPTIONS flags,
+		D3DRMLOADTEXTURE3CALLBACK callback,
+		void* arg,
+		IDirect3DRMFrame3* parent
+	) = 0;
+	virtual HRESULT SetTime(D3DVALUE time) = 0;
+};
+typedef IDirect3DRMAnimationSet2* LPDIRECT3DRMANIMATIONSET2;
+
 struct IDirect3DRMViewport2 : public IDirect3DRMViewport {
 	virtual HRESULT Clear(DWORD flags) = 0;
 	virtual HRESULT Render(IDirect3DRMFrame3* frame) = 0;
@@ -493,6 +537,17 @@ struct IDirect3DRMDevice3 : public IDirect3DRMDevice2 {
 	virtual HRESULT FindPreferredTextureFormat(DDBitDepths bitDepths, DWORD flags, LPDDPIXELFORMAT pixelFormat) = 0;
 };
 typedef IDirect3DRMDevice3* LPDIRECT3DRMDEVICE3;
+
+struct IDirect3DRMUserVisual;
+typedef int (*D3DRMUSERVISUALCALLBACK)(
+	IDirect3DRMUserVisual* visual,
+	void* arg,
+	D3DRMUSERVISUALREASON reason,
+	IDirect3DRMDevice* device,
+	IDirect3DRMViewport* viewport
+);
+struct IDirect3DRMUserVisual : public IDirect3DRMVisual {};
+typedef IDirect3DRMUserVisual* LPDIRECT3DRMUSERVISUAL;
 
 struct IDirect3DRM : virtual public IUnknown {
 	virtual HRESULT CreateDeviceFromD3D(
@@ -549,6 +604,13 @@ struct IDirect3DRM3 : public IDirect3DRM2 {
 		IDirect3DRMViewport2** outViewport
 	) = 0;
 	virtual HRESULT LoadTexture(const char* filename, IDirect3DRMTexture3** outTexture) = 0;
+	virtual HRESULT CreateMeshBuilder(IDirect3DRMMeshBuilder3** outMeshBuilder) = 0;
+	virtual HRESULT CreateAnimationSet(IDirect3DRMAnimationSet2** outAnimationSet) = 0;
+	virtual HRESULT CreateUserVisual(
+		D3DRMUSERVISUALCALLBACK callback,
+		void* arg,
+		IDirect3DRMUserVisual** outUserVisual
+	) = 0;
 };
 typedef IDirect3DRM3* LPDIRECT3DRM3;
 

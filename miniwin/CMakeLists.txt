@@ -17,11 +17,14 @@ add_library(miniwin STATIC EXCLUDE_FROM_ALL
 
   # D3DRM
   src/d3drm/d3drm.cpp
+  src/d3drm/d3drmanimationset.cpp
   src/d3drm/d3drmdevice.cpp
   src/d3drm/d3drmframe.cpp
   src/d3drm/d3drmlight.cpp
   src/d3drm/d3drmmesh.cpp
+  src/d3drm/d3drmmeshbuilder.cpp
   src/d3drm/d3drmtexture.cpp
+  src/d3drm/d3drmuservisual.cpp
   src/d3drm/d3drmviewport.cpp
   src/d3drm/d3drmrenderer.cpp
   src/internal/meshutils.cpp

@@ -1,13 +1,16 @@
 #include "miniwin/d3drm.h"
 
 #include "d3drm_impl.h"
+#include "d3drmanimationset_impl.h"
 #include "d3drmdevice_impl.h"
 #include "d3drmframe_impl.h"
 #include "d3drmlight_impl.h"
 #include "d3drmmesh_impl.h"
+#include "d3drmmeshbuilder_impl.h"
 #include "d3drmobject_impl.h"
 #include "d3drmrenderer.h"
 #include "d3drmtexture_impl.h"
+#include "d3drmuservisual_impl.h"
 #include "d3drmviewport_impl.h"
 #include "ddraw_impl.h"
 #include "ddsurface_impl.h"
@@ -318,6 +321,28 @@ HRESULT Direct3DRMImpl::LoadTexture(const char* filename, IDirect3DRMTexture3** 
 {
 	MINIWIN_NOT_IMPLEMENTED();
 	return E_NOTIMPL;
+}
+
+HRESULT Direct3DRMImpl::CreateMeshBuilder(IDirect3DRMMeshBuilder3** outMeshBuilder)
+{
+	*outMeshBuilder = static_cast<IDirect3DRMMeshBuilder3*>(new Direct3DRMMeshBuilderImpl);
+	return DD_OK;
+}
+
+HRESULT Direct3DRMImpl::CreateAnimationSet(IDirect3DRMAnimationSet2** outAnimationSet)
+{
+	*outAnimationSet = static_cast<IDirect3DRMAnimationSet2*>(new Direct3DRMAnimationSetImpl);
+	return DD_OK;
+}
+
+HRESULT Direct3DRMImpl::CreateUserVisual(
+	D3DRMUSERVISUALCALLBACK callback,
+	void* arg,
+	IDirect3DRMUserVisual** outUserVisual
+)
+{
+	*outUserVisual = static_cast<IDirect3DRMUserVisual*>(new Direct3DRMUserVisualImpl(callback, arg));
+	return DD_OK;
 }
 
 HRESULT WINAPI Direct3DRMCreate(IDirect3DRM** direct3DRM)
