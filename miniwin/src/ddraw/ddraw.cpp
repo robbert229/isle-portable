@@ -19,9 +19,19 @@ Direct3DRMRenderer* DDRenderer;
 
 HRESULT DirectDrawImpl::QueryInterface(const GUID& riid, void** ppvObject)
 {
+	if (SDL_memcmp(&riid, &IID_IDirectDraw, sizeof(GUID)) == 0) {
+		this->IUnknown::AddRef();
+		*ppvObject = static_cast<IDirectDraw*>(this);
+		return S_OK;
+	}
 	if (SDL_memcmp(&riid, &IID_IDirectDraw2, sizeof(GUID)) == 0) {
 		this->IUnknown::AddRef();
 		*ppvObject = static_cast<IDirectDraw2*>(this);
+		return S_OK;
+	}
+	if (SDL_memcmp(&riid, &IID_IDirectDraw4, sizeof(GUID)) == 0) {
+		this->IUnknown::AddRef();
+		*ppvObject = static_cast<IDirectDraw4*>(this);
 		return S_OK;
 	}
 	if (SDL_memcmp(&riid, &IID_IDirect3D2, sizeof(GUID)) == 0) {
@@ -315,6 +325,40 @@ HRESULT DirectDrawImpl::SetDisplayMode(DWORD dwWidth, DWORD dwHeight, DWORD dwBP
 	m_virtualHeight = dwHeight;
 	m_virtualBPP = dwBPP;
 	return DD_OK;
+}
+
+// IDirectDraw4 interface
+HRESULT DirectDrawImpl::CreateSurface(
+	LPDDSURFACEDESC2 lpDDSurfaceDesc,
+	LPDIRECTDRAWSURFACE4* lplpDDSurface,
+	IUnknown* pUnkOuter
+)
+{
+	MINIWIN_NOT_IMPLEMENTED();
+	return DDERR_UNSUPPORTED;
+}
+
+HRESULT DirectDrawImpl::EnumDisplayModes(
+	DWORD dwFlags,
+	LPDDSURFACEDESC2 lpDDSurfaceDesc,
+	LPVOID lpContext,
+	LPDDENUMMODESCALLBACK2 lpEnumModesCallback
+)
+{
+	MINIWIN_NOT_IMPLEMENTED();
+	return DDERR_UNSUPPORTED;
+}
+
+HRESULT DirectDrawImpl::SetDisplayMode(DWORD dwWidth, DWORD dwHeight, DWORD dwBPP, DWORD dwRefreshRate, DWORD dwFlags)
+{
+	MINIWIN_NOT_IMPLEMENTED();
+	return DDERR_UNSUPPORTED;
+}
+
+HRESULT DirectDrawImpl::GetAvailableVidMem(LPDDSCAPS2 lpDDSCaps, LPDWORD lpdwTotal, LPDWORD lpdwFree)
+{
+	MINIWIN_NOT_IMPLEMENTED();
+	return DDERR_UNSUPPORTED;
 }
 
 // IDirect3D2 interface

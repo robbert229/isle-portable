@@ -4,7 +4,7 @@
 #include <ddsurface_impl.h>
 #include <miniwin/ddraw.h>
 
-struct FrameBufferImpl : public IDirectDrawSurface3 {
+struct FrameBufferImpl : public IDirectDrawSurface4 {
 	FrameBufferImpl(DWORD virtualWidth, DWORD virtualHeight);
 	~FrameBufferImpl() override;
 
@@ -35,6 +35,19 @@ struct FrameBufferImpl : public IDirectDrawSurface3 {
 	HRESULT SetColorKey(DDColorKeyFlags dwFlags, LPDDCOLORKEY lpDDColorKey) override;
 	HRESULT SetPalette(LPDIRECTDRAWPALETTE lpDDPalette) override;
 	HRESULT Unlock(LPVOID lpSurfaceData) override;
+	// IDirectDrawSurface4 interface
+	HRESULT Blt(
+		LPRECT lpDestRect,
+		LPDIRECTDRAWSURFACE4 lpDDSrcSurface,
+		LPRECT lpSrcRect,
+		DDBltFlags dwFlags,
+		LPDDBLTFX lpDDBltFx
+	) override;
+	HRESULT Flip(LPDIRECTDRAWSURFACE4 lpDDSurfaceTargetOverride, DDFlipFlags dwFlags) override;
+	HRESULT GetAttachedSurface(LPDDSCAPS2 lpDDSCaps, LPDIRECTDRAWSURFACE4* lplpDDAttachedSurface) override;
+	HRESULT GetSurfaceDesc(LPDDSURFACEDESC2 lpDDSurfaceDesc) override;
+	HRESULT Lock(LPRECT lpDestRect, LPDDSURFACEDESC2 lpDDSurfaceDesc, DDLockFlags dwFlags, HANDLE hEvent) override;
+	HRESULT Unlock(LPRECT lpRect) override;
 
 	bool IsIndex8() const { return m_transferBuffer->m_surface->format == SDL_PIXELFORMAT_INDEX8; }
 

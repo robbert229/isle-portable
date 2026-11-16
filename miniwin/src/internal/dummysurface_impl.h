@@ -3,7 +3,7 @@
 #include <miniwin.h>
 #include <miniwin/ddraw.h>
 
-struct DummySurfaceImpl : public IDirectDrawSurface3 {
+struct DummySurfaceImpl : public IDirectDrawSurface4 {
 	// IUnknown interface
 	HRESULT QueryInterface(const GUID& riid, void** ppvObject) override
 	{
@@ -99,5 +99,43 @@ struct DummySurfaceImpl : public IDirectDrawSurface3 {
 	{
 		MINIWIN_NOT_IMPLEMENTED();
 		return DDERR_GENERIC;
+	}
+
+	// IDirectDrawSurface4 interface
+	HRESULT Blt(
+		LPRECT lpDestRect,
+		LPDIRECTDRAWSURFACE4 lpDDSrcSurface,
+		LPRECT lpSrcRect,
+		DDBltFlags dwFlags,
+		LPDDBLTFX lpDDBltFx
+	) override
+	{
+		MINIWIN_NOT_IMPLEMENTED();
+		return DDERR_UNSUPPORTED;
+	}
+	HRESULT Flip(LPDIRECTDRAWSURFACE4 lpDDSurfaceTargetOverride, DDFlipFlags dwFlags) override
+	{
+		MINIWIN_NOT_IMPLEMENTED();
+		return DDERR_UNSUPPORTED;
+	}
+	HRESULT GetAttachedSurface(LPDDSCAPS2 lpDDSCaps, LPDIRECTDRAWSURFACE4* lplpDDAttachedSurface) override
+	{
+		MINIWIN_NOT_IMPLEMENTED();
+		return DDERR_UNSUPPORTED;
+	}
+	HRESULT GetSurfaceDesc(LPDDSURFACEDESC2 lpDDSurfaceDesc) override
+	{
+		MINIWIN_NOT_IMPLEMENTED();
+		return DDERR_UNSUPPORTED;
+	}
+	HRESULT Lock(LPRECT lpDestRect, LPDDSURFACEDESC2 lpDDSurfaceDesc, DDLockFlags dwFlags, HANDLE hEvent) override
+	{
+		MINIWIN_NOT_IMPLEMENTED();
+		return DDERR_UNSUPPORTED;
+	}
+	HRESULT Unlock(LPRECT lpRect) override
+	{
+		MINIWIN_NOT_IMPLEMENTED();
+		return DDERR_UNSUPPORTED;
 	}
 };

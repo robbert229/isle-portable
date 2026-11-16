@@ -28,9 +28,19 @@ DirectDrawSurfaceImpl::~DirectDrawSurfaceImpl()
 // IUnknown interface
 HRESULT DirectDrawSurfaceImpl::QueryInterface(const GUID& riid, void** ppvObject)
 {
+	if (SDL_memcmp(&riid, &IID_IDirectDrawSurface, sizeof(GUID)) == 0) {
+		this->IUnknown::AddRef();
+		*ppvObject = static_cast<IDirectDrawSurface*>(this);
+		return S_OK;
+	}
 	if (SDL_memcmp(&riid, &IID_IDirectDrawSurface3, sizeof(GUID)) == 0) {
 		this->IUnknown::AddRef();
 		*ppvObject = static_cast<IDirectDrawSurface3*>(this);
+		return S_OK;
+	}
+	if (SDL_memcmp(&riid, &IID_IDirectDrawSurface4, sizeof(GUID)) == 0) {
+		this->IUnknown::AddRef();
+		*ppvObject = static_cast<IDirectDrawSurface4*>(this);
 		return S_OK;
 	}
 	SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "DirectDrawSurfaceImpl does not implement guid");
@@ -257,6 +267,54 @@ HRESULT DirectDrawSurfaceImpl::Unlock(LPVOID lpSurfaceData)
 		m_texture->Changed(TRUE, FALSE);
 	}
 	return DD_OK;
+}
+
+// IDirectDrawSurface4 interface
+HRESULT DirectDrawSurfaceImpl::Blt(
+	LPRECT lpDestRect,
+	LPDIRECTDRAWSURFACE4 lpDDSrcSurface,
+	LPRECT lpSrcRect,
+	DDBltFlags dwFlags,
+	LPDDBLTFX lpDDBltFx
+)
+{
+	MINIWIN_NOT_IMPLEMENTED();
+	return DDERR_UNSUPPORTED;
+}
+
+HRESULT DirectDrawSurfaceImpl::Flip(LPDIRECTDRAWSURFACE4 lpDDSurfaceTargetOverride, DDFlipFlags dwFlags)
+{
+	MINIWIN_NOT_IMPLEMENTED();
+	return DDERR_UNSUPPORTED;
+}
+
+HRESULT DirectDrawSurfaceImpl::GetAttachedSurface(LPDDSCAPS2 lpDDSCaps, LPDIRECTDRAWSURFACE4* lplpDDAttachedSurface)
+{
+	MINIWIN_NOT_IMPLEMENTED();
+	return DDERR_UNSUPPORTED;
+}
+
+HRESULT DirectDrawSurfaceImpl::GetSurfaceDesc(LPDDSURFACEDESC2 lpDDSurfaceDesc)
+{
+	MINIWIN_NOT_IMPLEMENTED();
+	return DDERR_UNSUPPORTED;
+}
+
+HRESULT DirectDrawSurfaceImpl::Lock(
+	LPRECT lpDestRect,
+	LPDDSURFACEDESC2 lpDDSurfaceDesc,
+	DDLockFlags dwFlags,
+	HANDLE hEvent
+)
+{
+	MINIWIN_NOT_IMPLEMENTED();
+	return DDERR_UNSUPPORTED;
+}
+
+HRESULT DirectDrawSurfaceImpl::Unlock(LPRECT lpRect)
+{
+	MINIWIN_NOT_IMPLEMENTED();
+	return DDERR_UNSUPPORTED;
 }
 
 IDirect3DRMTexture2* DirectDrawSurfaceImpl::ToTexture()

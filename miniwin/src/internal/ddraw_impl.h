@@ -16,7 +16,7 @@ inline static SDL_Rect ConvertRect(const RECT* r)
 	return {r->left, r->top, r->right - r->left, r->bottom - r->top};
 }
 
-struct DirectDrawImpl : public IDirectDraw2, public IDirect3D2, public IDirect3DMiniwin {
+struct DirectDrawImpl : public IDirectDraw4, public IDirect3D2, public IDirect3DMiniwin {
 	// IUnknown interface
 	HRESULT QueryInterface(const GUID& riid, void** ppvObject) override;
 	// IDirectDraw interface
@@ -42,6 +42,17 @@ struct DirectDrawImpl : public IDirectDraw2, public IDirect3D2, public IDirect3D
 	HRESULT RestoreDisplayMode() override;
 	HRESULT SetCooperativeLevel(HWND hWnd, DDSCLFlags dwFlags) override;
 	HRESULT SetDisplayMode(DWORD dwWidth, DWORD dwHeight, DWORD dwBPP) override;
+	// IDirectDraw4 interface
+	HRESULT CreateSurface(LPDDSURFACEDESC2 lpDDSurfaceDesc, LPDIRECTDRAWSURFACE4* lplpDDSurface, IUnknown* pUnkOuter)
+		override;
+	HRESULT EnumDisplayModes(
+		DWORD dwFlags,
+		LPDDSURFACEDESC2 lpDDSurfaceDesc,
+		LPVOID lpContext,
+		LPDDENUMMODESCALLBACK2 lpEnumModesCallback
+	) override;
+	HRESULT SetDisplayMode(DWORD dwWidth, DWORD dwHeight, DWORD dwBPP, DWORD dwRefreshRate, DWORD dwFlags) override;
+	HRESULT GetAvailableVidMem(LPDDSCAPS2 lpDDSCaps, LPDWORD lpdwTotal, LPDWORD lpdwFree) override;
 	// IDirect3D2 interface
 	HRESULT CreateDevice(const GUID& guid, IDirectDrawSurface* pBackBuffer, IDirect3DDevice2** ppDirect3DDevice)
 		override;

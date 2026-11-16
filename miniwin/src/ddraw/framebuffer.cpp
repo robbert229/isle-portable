@@ -27,6 +27,21 @@ FrameBufferImpl::~FrameBufferImpl()
 // IUnknown interface
 HRESULT FrameBufferImpl::QueryInterface(const GUID& riid, void** ppvObject)
 {
+	if (SDL_memcmp(&riid, &IID_IDirectDrawSurface, sizeof(GUID)) == 0) {
+		this->IUnknown::AddRef();
+		*ppvObject = static_cast<IDirectDrawSurface*>(this);
+		return S_OK;
+	}
+	if (SDL_memcmp(&riid, &IID_IDirectDrawSurface3, sizeof(GUID)) == 0) {
+		this->IUnknown::AddRef();
+		*ppvObject = static_cast<IDirectDrawSurface3*>(this);
+		return S_OK;
+	}
+	if (SDL_memcmp(&riid, &IID_IDirectDrawSurface4, sizeof(GUID)) == 0) {
+		this->IUnknown::AddRef();
+		*ppvObject = static_cast<IDirectDrawSurface4*>(this);
+		return S_OK;
+	}
 	MINIWIN_NOT_IMPLEMENTED();
 	return E_NOINTERFACE;
 }
@@ -54,7 +69,7 @@ HRESULT FrameBufferImpl::Blt(
 	}
 
 	if (dynamic_cast<FrameBufferImpl*>(lpDDSrcSurface)) {
-		return Flip(nullptr, DDFLIP_WAIT);
+		return Flip(static_cast<LPDIRECTDRAWSURFACE>(nullptr), DDFLIP_WAIT);
 	}
 
 	if ((dwFlags & DDBLT_COLORFILL) == DDBLT_COLORFILL) {
@@ -251,4 +266,47 @@ HRESULT FrameBufferImpl::Unlock(LPVOID lpSurfaceData)
 	}
 
 	return DD_OK;
+}
+
+// IDirectDrawSurface4 interface
+HRESULT FrameBufferImpl::Blt(
+	LPRECT lpDestRect,
+	LPDIRECTDRAWSURFACE4 lpDDSrcSurface,
+	LPRECT lpSrcRect,
+	DDBltFlags dwFlags,
+	LPDDBLTFX lpDDBltFx
+)
+{
+	MINIWIN_NOT_IMPLEMENTED();
+	return DDERR_UNSUPPORTED;
+}
+
+HRESULT FrameBufferImpl::Flip(LPDIRECTDRAWSURFACE4 lpDDSurfaceTargetOverride, DDFlipFlags dwFlags)
+{
+	MINIWIN_NOT_IMPLEMENTED();
+	return DDERR_UNSUPPORTED;
+}
+
+HRESULT FrameBufferImpl::GetAttachedSurface(LPDDSCAPS2 lpDDSCaps, LPDIRECTDRAWSURFACE4* lplpDDAttachedSurface)
+{
+	MINIWIN_NOT_IMPLEMENTED();
+	return DDERR_UNSUPPORTED;
+}
+
+HRESULT FrameBufferImpl::GetSurfaceDesc(LPDDSURFACEDESC2 lpDDSurfaceDesc)
+{
+	MINIWIN_NOT_IMPLEMENTED();
+	return DDERR_UNSUPPORTED;
+}
+
+HRESULT FrameBufferImpl::Lock(LPRECT lpDestRect, LPDDSURFACEDESC2 lpDDSurfaceDesc, DDLockFlags dwFlags, HANDLE hEvent)
+{
+	MINIWIN_NOT_IMPLEMENTED();
+	return DDERR_UNSUPPORTED;
+}
+
+HRESULT FrameBufferImpl::Unlock(LPRECT lpRect)
+{
+	MINIWIN_NOT_IMPLEMENTED();
+	return DDERR_UNSUPPORTED;
 }

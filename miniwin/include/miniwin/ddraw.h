@@ -100,8 +100,12 @@
 #define DDERR_NOTPALETTIZED MAKE_DDHRESULT(589)
 
 // --- GUIDs ---
+DEFINE_GUID(IID_IDirectDraw, 0x6C14DB80, 0xA733, 0x11CE, 0xA5, 0x21, 0x00, 0x20, 0xAF, 0x0B, 0xE5, 0x60);
 DEFINE_GUID(IID_IDirectDraw2, 0xB3A6F3E0, 0x2B43, 0x11CF, 0xA2, 0xDE, 0x00, 0xAA, 0x00, 0xB9, 0x33, 0x56);
+DEFINE_GUID(IID_IDirectDraw4, 0x9C59509A, 0x39BD, 0x11D1, 0x8C, 0x4A, 0x00, 0xC0, 0x4F, 0xD9, 0x30, 0xC5);
+DEFINE_GUID(IID_IDirectDrawSurface, 0x6C14DB81, 0xA733, 0x11CE, 0xA5, 0x21, 0x00, 0x20, 0xAF, 0x0B, 0xE5, 0x60);
 DEFINE_GUID(IID_IDirectDrawSurface3, 0xDA044E00, 0x69B2, 0x11D0, 0xA1, 0xD5, 0x00, 0xAA, 0x00, 0xB8, 0xDF, 0xBB);
+DEFINE_GUID(IID_IDirectDrawSurface4, 0x0B2B8630, 0xAD35, 0x11D0, 0x8E, 0xA6, 0x00, 0x60, 0x97, 0x97, 0xEA, 0x5B);
 
 // --- Enums ---
 #define DDCKEY_SRCBLT DDColorKeyFlags::SRCBLT
@@ -251,6 +255,14 @@ struct DDSCAPS {
 };
 typedef struct DDSCAPS* LPDDSCAPS;
 
+struct DDSCAPS2 {
+	DDSCapsFlags dwCaps;
+	DWORD dwCaps2;
+	DWORD dwCaps3;
+	DWORD dwCaps4;
+};
+typedef struct DDSCAPS2* LPDDSCAPS2;
+
 #define DDBLTFX_NOTEARING DDBLTFXFlags::NOTEARING
 enum class DDBLTFXFlags : uint8_t {
 	NOTEARING = 1 << 3,
@@ -293,6 +305,36 @@ struct DDSURFACEDESC {
 	DDSCAPS ddsCaps;
 };
 typedef struct DDSURFACEDESC* LPDDSURFACEDESC;
+
+struct DDSURFACEDESC2 {
+	DWORD dwSize;
+	DDSurfaceDescFlags dwFlags;
+	DWORD dwHeight;
+	DWORD dwWidth;
+	union {
+		LONG lPitch;
+		DWORD dwLinearSize;
+	};
+	union {
+		DWORD dwBackBufferCount;
+		DWORD dwDepth;
+	};
+	union {
+		DWORD dwMipMapCount;
+		DWORD dwRefreshRate;
+	};
+	DWORD dwAlphaBitDepth;
+	DWORD dwReserved;
+	LPVOID lpSurface;
+	DDCOLORKEY ddckCKDestOverlay;
+	DDCOLORKEY ddckCKDestBlt;
+	DDCOLORKEY ddckCKSrcOverlay;
+	DDCOLORKEY ddckCKSrcBlt;
+	DDPIXELFORMAT ddpfPixelFormat;
+	DDSCAPS2 ddsCaps;
+	DWORD dwTextureStage;
+};
+typedef struct DDSURFACEDESC2* LPDDSURFACEDESC2;
 
 struct PALETTEENTRY {
 	BYTE peRed;
@@ -357,6 +399,22 @@ struct IDirectDrawSurface : virtual public IUnknown {
 struct IDirectDrawSurface3 : public IDirectDrawSurface {};
 typedef IDirectDrawSurface3* LPDIRECTDRAWSURFACE3;
 
+typedef struct IDirectDrawSurface4* LPDIRECTDRAWSURFACE4;
+struct IDirectDrawSurface4 : public IDirectDrawSurface3 {
+	virtual HRESULT Blt(
+		LPRECT lpDestRect,
+		LPDIRECTDRAWSURFACE4 lpDDSrcSurface,
+		LPRECT lpSrcRect,
+		DDBltFlags dwFlags,
+		LPDDBLTFX lpDDBltFx
+	) = 0;
+	virtual HRESULT Flip(LPDIRECTDRAWSURFACE4 lpDDSurfaceTargetOverride, DDFlipFlags dwFlags) = 0;
+	virtual HRESULT GetAttachedSurface(LPDDSCAPS2 lpDDSCaps, LPDIRECTDRAWSURFACE4* lplpDDAttachedSurface) = 0;
+	virtual HRESULT GetSurfaceDesc(LPDDSURFACEDESC2 lpDDSurfaceDesc) = 0;
+	virtual HRESULT Lock(LPRECT lpDestRect, LPDDSURFACEDESC2 lpDDSurfaceDesc, DDLockFlags dwFlags, HANDLE hEvent) = 0;
+	virtual HRESULT Unlock(LPRECT lpRect) = 0;
+};
+
 typedef HRESULT (*LPDDENUMMODESCALLBACK)(LPDDSURFACEDESC, LPVOID);
 struct IDirectDraw : virtual public IUnknown {
 	virtual HRESULT CreateClipper(DWORD dwFlags, LPDIRECTDRAWCLIPPER* lplpDDClipper, IUnknown* pUnkOuter) = 0;
@@ -387,6 +445,24 @@ struct IDirectDraw : virtual public IUnknown {
 
 struct IDirectDraw2 : public IDirectDraw {};
 typedef IDirectDraw2* LPDIRECTDRAW2;
+
+typedef HRESULT (*LPDDENUMMODESCALLBACK2)(LPDDSURFACEDESC2, LPVOID);
+struct IDirectDraw4 : public IDirectDraw2 {
+	virtual HRESULT CreateSurface(
+		LPDDSURFACEDESC2 lpDDSurfaceDesc,
+		LPDIRECTDRAWSURFACE4* lplpDDSurface,
+		IUnknown* pUnkOuter
+	) = 0;
+	virtual HRESULT EnumDisplayModes(
+		DWORD dwFlags,
+		LPDDSURFACEDESC2 lpDDSurfaceDesc,
+		LPVOID lpContext,
+		LPDDENUMMODESCALLBACK2 lpEnumModesCallback
+	) = 0;
+	virtual HRESULT SetDisplayMode(DWORD dwWidth, DWORD dwHeight, DWORD dwBPP, DWORD dwRefreshRate, DWORD dwFlags) = 0;
+	virtual HRESULT GetAvailableVidMem(LPDDSCAPS2 lpDDSCaps, LPDWORD lpdwTotal, LPDWORD lpdwFree) = 0;
+};
+typedef IDirectDraw4* LPDIRECTDRAW4;
 
 // --- Functions ---
 

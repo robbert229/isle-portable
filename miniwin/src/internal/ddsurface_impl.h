@@ -3,7 +3,7 @@
 #include <SDL3/SDL.h>
 #include <miniwin/ddraw.h>
 
-struct DirectDrawSurfaceImpl : public IDirectDrawSurface3 {
+struct DirectDrawSurfaceImpl : public IDirectDrawSurface4 {
 	DirectDrawSurfaceImpl(int width, int height, SDL_PixelFormat format);
 	~DirectDrawSurfaceImpl() override;
 
@@ -34,6 +34,19 @@ struct DirectDrawSurfaceImpl : public IDirectDrawSurface3 {
 	HRESULT SetColorKey(DDColorKeyFlags dwFlags, LPDDCOLORKEY lpDDColorKey) override;
 	HRESULT SetPalette(LPDIRECTDRAWPALETTE lpDDPalette) override;
 	HRESULT Unlock(LPVOID lpSurfaceData) override;
+	// IDirectDrawSurface4 interface
+	HRESULT Blt(
+		LPRECT lpDestRect,
+		LPDIRECTDRAWSURFACE4 lpDDSrcSurface,
+		LPRECT lpSrcRect,
+		DDBltFlags dwFlags,
+		LPDDBLTFX lpDDBltFx
+	) override;
+	HRESULT Flip(LPDIRECTDRAWSURFACE4 lpDDSurfaceTargetOverride, DDFlipFlags dwFlags) override;
+	HRESULT GetAttachedSurface(LPDDSCAPS2 lpDDSCaps, LPDIRECTDRAWSURFACE4* lplpDDAttachedSurface) override;
+	HRESULT GetSurfaceDesc(LPDDSURFACEDESC2 lpDDSurfaceDesc) override;
+	HRESULT Lock(LPRECT lpDestRect, LPDDSURFACEDESC2 lpDDSurfaceDesc, DDLockFlags dwFlags, HANDLE hEvent) override;
+	HRESULT Unlock(LPRECT lpRect) override;
 
 	IDirect3DRMTexture2* ToTexture();
 
