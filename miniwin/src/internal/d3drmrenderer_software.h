@@ -132,5 +132,14 @@ inline static void Direct3DRMSoftware_EnumDevice(LPD3DENUMDEVICESCALLBACK cb, vo
 	helDesc.dpcTriCaps.dwShadeCaps = D3DPSHADECAPS_ALPHAFLATBLEND;
 	helDesc.dpcTriCaps.dwTextureFilterCaps = D3DPTFILTERCAPS_LINEAR;
 
+#ifdef MINIWIN_SOFTWARE_HAL
+	// Some games accept only a hardware (HAL) device and report "no 3D
+	// accelerator" otherwise. With this option the software renderer stands in
+	// for the display driver's rasterizer and describes itself as HAL.
+	halDesc = helDesc;
+	halDesc.dwFlags = halDesc.dwFlags | D3DDD_COLORMODEL | D3DDD_DEVICERENDERBITDEPTH;
+	halDesc.dwDeviceRenderBitDepth = DDBD_16 | DDBD_24 | DDBD_32;
+#endif
+
 	EnumDevice(cb, ctx, "Miniwin Emulation", &halDesc, &helDesc, SOFTWARE_GUID);
 }
