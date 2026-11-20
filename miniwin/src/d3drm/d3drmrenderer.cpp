@@ -59,7 +59,11 @@ ImmediateState::ImmediateState()
 	renderState[23] = static_cast<DWORD>(D3DCMP_LESSEQUAL);
 	renderState[25] = static_cast<DWORD>(D3DCMP_ALWAYS); // ALPHAFUNC
 	renderState[26] = FALSE;                             // DITHERENABLE
-	renderState[37] = 1;                                 // FOGTABLEDENSITY
+	const float one = 1.0f;
+	SDL_memcpy(&renderState[37], &one, sizeof(DWORD)); // FOGTABLEEND
+	SDL_memcpy(&renderState[38], &one, sizeof(DWORD)); // FOGTABLEDENSITY
+	SDL_memcpy(&lightState[6], &one, sizeof(DWORD));   // FOGEND
+	SDL_memcpy(&lightState[7], &one, sizeof(DWORD));   // FOGDENSITY
 
 	for (DWORD stage = 0; stage < TextureStageCount; ++stage) {
 		DWORD* tss = textureStageState[stage];

@@ -89,6 +89,12 @@ private:
 		bool keyed, colorKeyEnable, linear;
 		DWORD colorOp, colorArg1, colorArg2, alphaOp, alphaArg1, alphaArg2;
 		bool specular; // SPECULARENABLE: add the vertex specular after stage 0
+		// Fog, blended in last: per vertex (the factor rides in the
+		// specular alpha, as in Direct3D) or per pixel from the view depth.
+		enum class Fog { None, Vertex, Table } fog;
+		DWORD fogMode; // D3DFOGMODE, for table fog
+		float fogStart, fogEnd, fogDensity;
+		float fogR, fogG, fogB;
 	};
 	void DrawImmediateClipped(const SWLitVertex (&v)[3], const ImmediatePixelState& state);
 	void DrawImmediateTriangle(

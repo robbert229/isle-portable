@@ -163,6 +163,44 @@ void Direct3DRMViewportImpl::CollectLightsFromFrame(IDirect3DRMFrame* frame, D3D
 	children->Release();
 }
 
+static DWORD FloatBits(float value)
+{
+	DWORD bits;
+	memcpy(&bits, &value, sizeof(bits));
+	return bits;
+}
+
+void Direct3DRMViewportImpl::ApplySceneFog()
+{
+	auto* root = static_cast<Direct3DRMFrameImpl*>(m_rootFrame);
+	m_renderer->SetRenderState(D3DRENDERSTATE_FOGENABLE, root->m_fogEnable ? TRUE : FALSE);
+	if (!root->m_fogEnable) {
+		return;
+	}
+	D3DFOGMODE mode = D3DFOG_LINEAR;
+	if (root->m_fogMode == D3DRMFOG_EXPONENTIAL) {
+		mode = D3DFOG_EXP;
+	}
+	else if (root->m_fogMode == D3DRMFOG_EXPONENTIALSQUARED) {
+		mode = D3DFOG_EXP2;
+	}
+	bool vertex = (root->m_fogMethod & (D3DRMFOGMETHOD_TABLE | D3DRMFOGMETHOD_ANY)) == 0 &&
+				  (root->m_fogMethod & D3DRMFOGMETHOD_VERTEX) == D3DRMFOGMETHOD_VERTEX;
+	m_renderer->SetRenderState(D3DRENDERSTATE_FOGCOLOR, root->m_fogColor);
+	m_renderer->SetRenderState(D3DRENDERSTATE_FOGTABLEMODE, static_cast<DWORD>(vertex ? D3DFOG_NONE : mode));
+	m_renderer->SetLightState(D3DLIGHTSTATE_FOGMODE, static_cast<DWORD>(vertex ? mode : D3DFOG_NONE));
+	if (vertex) {
+		m_renderer->SetLightState(D3DLIGHTSTATE_FOGSTART, FloatBits(root->m_fogStart));
+		m_renderer->SetLightState(D3DLIGHTSTATE_FOGEND, FloatBits(root->m_fogEnd));
+		m_renderer->SetLightState(D3DLIGHTSTATE_FOGDENSITY, FloatBits(root->m_fogDensity));
+	}
+	else {
+		m_renderer->SetRenderState(D3DRENDERSTATE_FOGTABLESTART, FloatBits(root->m_fogStart));
+		m_renderer->SetRenderState(D3DRENDERSTATE_FOGTABLEEND, FloatBits(root->m_fogEnd));
+		m_renderer->SetRenderState(D3DRENDERSTATE_FOGTABLEDENSITY, FloatBits(root->m_fogDensity));
+	}
+}
+
 void Direct3DRMViewportImpl::BuildViewFrustumPlanes()
 {
 
@@ -418,6 +456,7 @@ HRESULT Direct3DRMViewportImpl::RenderScene()
 	if (status != DD_OK) {
 		return status;
 	}
+	ApplySceneFog();
 
 	CollectMeshesFromFrame(m_rootFrame, identity, sceneMask);
 

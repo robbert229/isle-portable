@@ -187,6 +187,7 @@ static SWLitVertex SplitEdge(SWLitVertex a, const SWLitVertex& b, float plane)
 	a.specular.r = static_cast<Uint8>(a.specular.r + t * (b.specular.r - a.specular.r));
 	a.specular.g = static_cast<Uint8>(a.specular.g + t * (b.specular.g - a.specular.g));
 	a.specular.b = static_cast<Uint8>(a.specular.b + t * (b.specular.b - a.specular.b));
+	a.specular.a = static_cast<Uint8>(a.specular.a + t * (b.specular.a - a.specular.a));
 
 	return a;
 }
@@ -1226,6 +1227,33 @@ void Direct3DRMSoftwareRenderer::DrawImmediateClipped(const SWLitVertex (&v)[3],
 	});
 }
 
+// Direct3D's fog factor at view depth z: 1 leaves the colour, 0 is all fog.
+static float FogFactor(DWORD mode, float start, float end, float density, float z)
+{
+	float f = 1.0f;
+	switch (static_cast<D3DFOGMODE>(mode)) {
+	case D3DFOG_LINEAR:
+		f = end != start ? (end - z) / (end - start) : (z < start ? 1.0f : 0.0f);
+		break;
+	case D3DFOG_EXP:
+		f = std::exp(-density * z);
+		break;
+	case D3DFOG_EXP2:
+		f = std::exp(-(density * z) * (density * z));
+		break;
+	default:
+		break;
+	}
+	return std::min(1.0f, std::max(0.0f, f));
+}
+
+static float FloatState(DWORD bits)
+{
+	float value;
+	SDL_memcpy(&value, &bits, sizeof(value));
+	return value;
+}
+
 static bool ImmediateDepthTest(DWORD func, float z, float stored)
 {
 	switch (static_cast<D3DCMPFUNC>(func)) {
@@ -1509,6 +1537,19 @@ void Direct3DRMSoftwareRenderer::DrawImmediateTriangle(
 				g = std::min(1.0f, g + spec(&SDL_Color::g));
 				b = std::min(1.0f, b + spec(&SDL_Color::b));
 			}
+			if (state.fog != ImmediatePixelState::Fog::None) {
+				float f;
+				if (state.fog == ImmediatePixelState::Fog::Vertex) {
+					f = (w[0] * lit[0]->specular.a + w[1] * lit[1]->specular.a + w[2] * lit[2]->specular.a) / 255.0f;
+				}
+				else {
+					float oow = w[0] * oneOverW[0] + w[1] * oneOverW[1] + w[2] * oneOverW[2];
+					f = FogFactor(state.fogMode, state.fogStart, state.fogEnd, state.fogDensity, 1.0f / oow);
+				}
+				r = f * r + (1.0f - f) * state.fogR;
+				g = f * g + (1.0f - f) * state.fogG;
+				b = f * b + (1.0f - f) * state.fogB;
+			}
 
 			// The render target stands for the display surface, which has no
 			// alpha channel: destination alpha reads as one and stays opaque.
@@ -1650,6 +1691,27 @@ HRESULT Direct3DRMSoftwareRenderer::SubmitImmediate(const ImmediateDraw& draw)
 	pixelState.alphaArg1 = tss[static_cast<DWORD>(D3DTSS_ALPHAARG1)];
 	pixelState.alphaArg2 = tss[static_cast<DWORD>(D3DTSS_ALPHAARG2)];
 	pixelState.specular = st.Render(D3DRENDERSTATE_SPECULARENABLE) != 0;
+	pixelState.fog = ImmediatePixelState::Fog::None;
+	DWORD vertexFogMode = st.lightState[static_cast<DWORD>(D3DLIGHTSTATE_FOGMODE)];
+	float vertexFogStart = FloatState(st.lightState[static_cast<DWORD>(D3DLIGHTSTATE_FOGSTART)]);
+	float vertexFogEnd = FloatState(st.lightState[static_cast<DWORD>(D3DLIGHTSTATE_FOGEND)]);
+	float vertexFogDensity = FloatState(st.lightState[static_cast<DWORD>(D3DLIGHTSTATE_FOGDENSITY)]);
+	if (st.Render(D3DRENDERSTATE_FOGENABLE)) {
+		D3DCOLOR fogColor = st.Render(D3DRENDERSTATE_FOGCOLOR);
+		pixelState.fogR = ((fogColor >> 16) & 0xff) / 255.0f;
+		pixelState.fogG = ((fogColor >> 8) & 0xff) / 255.0f;
+		pixelState.fogB = (fogColor & 0xff) / 255.0f;
+		pixelState.fogMode = st.Render(D3DRENDERSTATE_FOGTABLEMODE);
+		if (pixelState.fogMode != static_cast<DWORD>(D3DFOG_NONE)) {
+			pixelState.fog = ImmediatePixelState::Fog::Table;
+			pixelState.fogStart = FloatState(st.Render(D3DRENDERSTATE_FOGTABLESTART));
+			pixelState.fogEnd = FloatState(st.Render(D3DRENDERSTATE_FOGTABLEEND));
+			pixelState.fogDensity = FloatState(st.Render(D3DRENDERSTATE_FOGTABLEDENSITY));
+		}
+		else if (vertexFogMode != static_cast<DWORD>(D3DFOG_NONE)) {
+			pixelState.fog = ImmediatePixelState::Fog::Vertex;
+		}
+	}
 	const DWORD cull = st.Render(D3DRENDERSTATE_CULLMODE);
 
 	// The eye in world space, for the specular half vector (LOCALVIEWER).
@@ -1687,6 +1749,16 @@ HRESULT Direct3DRMSoftwareRenderer::SubmitImmediate(const ImmediateDraw& draw)
 				m_vertexColors[i],
 				m_vertexSpeculars[i]
 			);
+			if (pixelState.fog == ImmediatePixelState::Fog::Vertex) {
+				float f = FogFactor(
+					vertexFogMode,
+					vertexFogStart,
+					vertexFogEnd,
+					vertexFogDensity,
+					m_transformedPositions[i].z
+				);
+				m_vertexSpeculars[i].a = static_cast<Uint8>(f * 255.0f + 0.5f);
+			}
 		}
 	};
 

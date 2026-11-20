@@ -77,6 +77,10 @@ private:
 	// Push the lights in mask to the renderer, unless they are pushed already.
 	void UseLights(uint64_t mask);
 	void BuildViewFrustumPlanes();
+	// Load the scene's fog into the device's fog states, as D3DRM does
+	// before it renders: table fog in the render states, vertex fog in
+	// the light states.
+	void ApplySceneFog();
 	void RenderUserVisual(struct Direct3DRMUserVisualImpl* visual, const D3DRMMATRIX4D worldMatrix);
 	Direct3DRMRenderer* m_renderer;
 	IDirect3DRMDevice* m_device; // the device the viewport was created on; not owned
