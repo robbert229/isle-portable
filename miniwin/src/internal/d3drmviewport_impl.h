@@ -84,7 +84,6 @@ private:
 	D3DRMMATRIX4D m_viewProjectionwMatrix;
 	D3DRMMATRIX4D m_viewMatrix;
 	D3DRMMATRIX4D m_projectionMatrix;
-	D3DRMMATRIX4D m_inverseProjectionMatrix;
 	IDirect3DRMFrame* m_rootFrame = nullptr;
 	IDirect3DRMFrame* m_camera = nullptr;
 	struct Direct3DViewportImpl* m_d3dViewport = nullptr;
