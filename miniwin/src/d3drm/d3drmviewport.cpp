@@ -93,7 +93,7 @@ static void ComputeFrameWorldMatrix(IDirect3DRMFrame* frame, D3DRMMATRIX4D out)
 	while (cur) {
 		auto* impl = static_cast<Direct3DRMFrameImpl*>(cur);
 		D3DRMMATRIX4D tmp;
-		D3DRMMatrixMultiply(tmp, impl->m_transform, acc);
+		D3DRMMatrixMultiply(tmp, acc, impl->m_transform);
 		memcpy(acc, tmp, sizeof(acc));
 
 		if (cur == impl->m_parent) {
@@ -111,8 +111,10 @@ void Direct3DRMViewportImpl::CollectLightsFromFrame(
 )
 {
 	auto* frameImpl = static_cast<Direct3DRMFrameImpl*>(frame);
+	// Row vectors, as D3DRM: a point goes through the frame's own transform
+	// first, then its parent's.
 	D3DRMMATRIX4D worldMatrix;
-	D3DRMMatrixMultiply(worldMatrix, parentToWorld, frameImpl->m_transform);
+	D3DRMMatrixMultiply(worldMatrix, frameImpl->m_transform, parentToWorld);
 
 	IDirect3DRMLightArray* lightArray = nullptr;
 	frame->GetLights(&lightArray);
@@ -235,7 +237,7 @@ void Direct3DRMViewportImpl::CollectMeshesFromFrame(IDirect3DRMFrame* frame, D3D
 	memcpy(localMatrix, frameImpl->m_transform, sizeof(D3DRMMATRIX4D));
 
 	D3DRMMATRIX4D worldMatrix;
-	D3DRMMatrixMultiply(worldMatrix, parentMatrix, localMatrix);
+	D3DRMMatrixMultiply(worldMatrix, localMatrix, parentMatrix);
 
 	Matrix3x3 worldMatrixInvert;
 	D3DRMMatrixInvertForNormal(worldMatrixInvert, worldMatrix);
