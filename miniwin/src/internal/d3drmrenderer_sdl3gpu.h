@@ -18,8 +18,18 @@ typedef struct {
 static_assert(sizeof(ViewportUniforms) % 16 == 0);
 static_assert(sizeof(ViewportUniforms) == 192);
 
+// The shader's light: SceneLight's first 48 bytes.
+struct ShaderLight {
+	FColor color;
+	D3DVECTOR position;
+	float positional;
+	D3DVECTOR direction;
+	float directional;
+};
+static_assert(sizeof(ShaderLight) == 48);
+
 struct FragmentShadingData {
-	SceneLight lights[3];
+	ShaderLight lights[3];
 	int lightCount;
 	float shininess;
 	SDL_Color color;

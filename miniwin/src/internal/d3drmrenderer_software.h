@@ -88,6 +88,7 @@ private:
 		int texWidth, texHeight, texPitch;
 		bool keyed, colorKeyEnable, linear;
 		DWORD colorOp, colorArg1, colorArg2, alphaOp, alphaArg1, alphaArg2;
+		bool specular; // SPECULARENABLE: add the vertex specular after stage 0
 	};
 	void DrawImmediateClipped(const SWLitVertex (&v)[3], const ImmediatePixelState& state);
 	void DrawImmediateTriangle(
@@ -104,6 +105,18 @@ private:
 		SDL_Color& color,
 		SDL_Color& specular
 	);
+	// Direct3D's lighting of a D3DFVF_VERTEX with a D3DMATERIAL: emissive,
+	// plus ambient light times the material's ambient, plus each light's
+	// diffuse and (when wanted) specular.
+	void LightImmediateVertex(
+		const D3DVECTOR& position,
+		const D3DVECTOR& normal,
+		const D3DMATERIAL& material,
+		const D3DVECTOR& eye,
+		bool specular,
+		SDL_Color& color,
+		SDL_Color& specularColor
+	);
 	void AddTextureDestroyCallback(Uint32 id, IDirect3DRMTexture* texture);
 	SDL_Surface* ConvertTexture(Direct3DRMTextureImpl* texture, bool& keyed) const;
 	void AddMeshDestroyCallback(Uint32 id, IDirect3DRMMesh* mesh);
@@ -112,9 +125,18 @@ private:
 	// lighting loop does no normalization.
 	struct PreparedLight {
 		D3DVECTOR vec; // normalized direction to light (directional) or position (positional)
+		D3DVECTOR spotDirection; // unit direction the spot shines in
 		FColor color;
 		bool positional;
+		bool spot;
+		float range;
+		float attenuation[3];
+		float cosUmbra;    // inside it the spot is at full strength
+		float cosPenumbra; // outside it the spot lights nothing
 	};
+	// How much of a positional light reaches worldPos (range, attenuation
+	// and spot cone), and the unit vector from worldPos toward the light.
+	float LightReach(const PreparedLight& light, const D3DVECTOR& worldPos, D3DVECTOR& toLight) const;
 
 	D3DLightingModel m_lightingModel;
 

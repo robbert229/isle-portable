@@ -27,6 +27,10 @@ struct GL11_BridgeSceneLight {
 	float positional;
 	GL11_BridgeVector direction;
 	float directional;
+	float range;
+	float attenuation[3];
+	float umbra;
+	float penumbra;
 };
 
 struct GL11_BridgeSceneVertex {

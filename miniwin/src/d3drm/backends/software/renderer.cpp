@@ -103,7 +103,18 @@ void Direct3DRMSoftwareRenderer::PushLights(const SceneLight* lights, size_t cou
 
 		PreparedLight prepared;
 		prepared.color = light.color;
+		prepared.spot = light.positional == 1.0f && light.directional == 1.0f;
+		prepared.range = light.range;
+		for (int a = 0; a < 3; ++a) {
+			prepared.attenuation[a] = light.attenuation[a];
+		}
+		float penumbra = std::max(light.penumbra, light.umbra);
+		prepared.cosUmbra = std::cos(light.umbra);
+		prepared.cosPenumbra = std::cos(penumbra);
 		if (light.directional == 1.0f) {
+			prepared.spotDirection = Normalize(light.direction);
+		}
+		if (light.directional == 1.0f && !prepared.spot) {
 			prepared.positional = false;
 			prepared.vec = Normalize({-light.direction.x, -light.direction.y, -light.direction.z});
 		}
@@ -276,6 +287,33 @@ inline static void BlendRGBA(Uint8* p, int r, int g, int b, int a)
 	p[3] = static_cast<Uint8>(outA > 255 ? 255 : outA);
 }
 
+float Direct3DRMSoftwareRenderer::LightReach(
+	const PreparedLight& light,
+	const D3DVECTOR& worldPos,
+	D3DVECTOR& toLight
+) const
+{
+	D3DVECTOR d = {light.vec.x - worldPos.x, light.vec.y - worldPos.y, light.vec.z - worldPos.z};
+	float distance = std::sqrt(DotProduct(d, d));
+	if (distance > light.range) {
+		return 0.0f;
+	}
+	toLight = distance > 0.0f ? D3DVECTOR{d.x / distance, d.y / distance, d.z / distance} : D3DVECTOR{0, 0, 0};
+	float denominator =
+		light.attenuation[0] + light.attenuation[1] * distance + light.attenuation[2] * distance * distance;
+	float reach = denominator > 0.0f ? 1.0f / denominator : 1.0f;
+	if (light.spot) {
+		float rho = -DotProduct(toLight, light.spotDirection);
+		if (rho <= light.cosPenumbra) {
+			return 0.0f;
+		}
+		if (rho < light.cosUmbra) {
+			reach *= (rho - light.cosPenumbra) / (light.cosUmbra - light.cosPenumbra);
+		}
+	}
+	return reach;
+}
+
 void Direct3DRMSoftwareRenderer::ApplyLighting(
 	const D3DVECTOR& position,
 	const D3DVECTOR& oNormal,
@@ -296,18 +334,22 @@ void Direct3DRMSoftwareRenderer::ApplyLighting(
 		const PreparedLight& light = m_preparedLights[i];
 
 		D3DVECTOR lightVec;
+		float reach = 1.0f;
 		if (light.positional) {
 			if (!haveWorldPos) {
 				worldPos = TransformPoint(position, m_worldMatrix);
 				haveWorldPos = true;
 			}
-			lightVec = Normalize({light.vec.x - worldPos.x, light.vec.y - worldPos.y, light.vec.z - worldPos.z});
+			reach = LightReach(light, worldPos, lightVec);
+			if (reach <= 0.0f) {
+				continue;
+			}
 		}
 		else {
 			lightVec = light.vec;
 		}
 
-		float dotNL = DotProduct(normal, lightVec);
+		float dotNL = DotProduct(normal, lightVec) * reach;
 		if (dotNL > 0.0f) {
 			diffuse.r += dotNL * light.color.r;
 			diffuse.g += dotNL * light.color.g;
@@ -1458,6 +1500,15 @@ void Direct3DRMSoftwareRenderer::DrawImmediateTriangle(
 				b = stage(state.colorOp, state.colorArg1, state.colorArg2, b, t.b);
 				srcAlpha = stage(state.alphaOp, state.alphaArg1, state.alphaArg2, diffuseAlpha, t.a);
 			}
+			if (state.specular) {
+				auto spec = [&](Uint8 SDL_Color::*c) {
+					return (w[0] * (lit[0]->specular.*c) + w[1] * (lit[1]->specular.*c) + w[2] * (lit[2]->specular.*c)) /
+						   255.0f;
+				};
+				r = std::min(1.0f, r + spec(&SDL_Color::r));
+				g = std::min(1.0f, g + spec(&SDL_Color::g));
+				b = std::min(1.0f, b + spec(&SDL_Color::b));
+			}
 
 			// The render target stands for the display surface, which has no
 			// alpha channel: destination alpha reads as one and stays opaque.
@@ -1488,9 +1539,62 @@ void Direct3DRMSoftwareRenderer::DrawImmediateTriangle(
 	}
 }
 
-// Each vertex is lit with the scene's lights and the current material's
-// diffuse colour and alpha; texture stage 0 then combines that with the
-// texture.
+void Direct3DRMSoftwareRenderer::LightImmediateVertex(
+	const D3DVECTOR& position,
+	const D3DVECTOR& oNormal,
+	const D3DMATERIAL& material,
+	const D3DVECTOR& eye,
+	bool specular,
+	SDL_Color& color,
+	SDL_Color& specularColor
+)
+{
+	D3DVECTOR normal = Normalize(TransformNormal(oNormal, m_normalMatrix));
+	D3DVECTOR worldPos = TransformPoint(position, m_worldMatrix);
+	D3DVECTOR toEye = Normalize(Subtract(eye, worldPos));
+
+	FColor diffuse = {
+		material.emissive.r + m_ambientR * material.ambient.r,
+		material.emissive.g + m_ambientG * material.ambient.g,
+		material.emissive.b + m_ambientB * material.ambient.b,
+		0
+	};
+	FColor spec = {0, 0, 0, 0};
+	for (const PreparedLight& light : m_preparedLights) {
+		D3DVECTOR lightVec = light.vec;
+		float reach = 1.0f;
+		if (light.positional) {
+			reach = LightReach(light, worldPos, lightVec);
+			if (reach <= 0.0f) {
+				continue;
+			}
+		}
+		float dotNL = DotProduct(normal, lightVec);
+		if (dotNL <= 0.0f) {
+			continue;
+		}
+		diffuse.r += reach * dotNL * light.color.r * material.diffuse.r;
+		diffuse.g += reach * dotNL * light.color.g * material.diffuse.g;
+		diffuse.b += reach * dotNL * light.color.b * material.diffuse.b;
+		if (specular && material.power > 0.0f) {
+			D3DVECTOR halfway = Normalize({lightVec.x + toEye.x, lightVec.y + toEye.y, lightVec.z + toEye.z});
+			float dotNH = DotProduct(normal, halfway);
+			if (dotNH > 0.0f) {
+				float power = reach * std::pow(dotNH, material.power);
+				spec.r += power * light.color.r * material.specular.r;
+				spec.g += power * light.color.g * material.specular.g;
+				spec.b += power * light.color.b * material.specular.b;
+			}
+		}
+	}
+
+	auto toByte = [](float c) { return static_cast<Uint8>(std::min(255.0f, std::max(0.0f, c * 255.0f + 0.5f))); };
+	color = {toByte(diffuse.r), toByte(diffuse.g), toByte(diffuse.b), toByte(material.diffuse.a)};
+	specularColor = {toByte(spec.r), toByte(spec.g), toByte(spec.b), 0};
+}
+
+// Each vertex is lit as Direct3D lights it, from the scene's lights and the
+// current material; texture stage 0 then combines that with the texture.
 HRESULT Direct3DRMSoftwareRenderer::SubmitImmediate(const ImmediateDraw& draw)
 {
 	if (!m_renderedImage || !m_renderedImage->pixels) {
@@ -1545,7 +1649,20 @@ HRESULT Direct3DRMSoftwareRenderer::SubmitImmediate(const ImmediateDraw& draw)
 	pixelState.alphaOp = tss[static_cast<DWORD>(D3DTSS_ALPHAOP)];
 	pixelState.alphaArg1 = tss[static_cast<DWORD>(D3DTSS_ALPHAARG1)];
 	pixelState.alphaArg2 = tss[static_cast<DWORD>(D3DTSS_ALPHAARG2)];
+	pixelState.specular = st.Render(D3DRENDERSTATE_SPECULARENABLE) != 0;
 	const DWORD cull = st.Render(D3DRENDERSTATE_CULLMODE);
+
+	// The eye in world space, for the specular half vector (LOCALVIEWER).
+	D3DVECTOR eye = {0, 0, 0};
+	{
+		const D3DRMMATRIX4D& v = draw.view;
+		D3DVECTOR t = {v[3][0], v[3][1], v[3][2]};
+		eye = {
+			-(t.x * v[0][0] + t.y * v[0][1] + t.z * v[0][2]),
+			-(t.x * v[1][0] + t.y * v[1][1] + t.z * v[1][2]),
+			-(t.x * v[2][0] + t.y * v[2][1] + t.z * v[2][2])
+		};
+	}
 
 	const DWORD vertexCount = draw.vertexCount;
 	m_transformedPositions.resize(vertexCount);
@@ -1561,7 +1678,15 @@ HRESULT Direct3DRMSoftwareRenderer::SubmitImmediate(const ImmediateDraw& draw)
 		if (!m_vertexLit[i]) {
 			m_vertexLit[i] = 1;
 			const D3DVERTEX& v = draw.vertices[i];
-			ApplyLighting({v.x, v.y, v.z}, {v.nx, v.ny, v.nz}, appearance, m_vertexColors[i], m_vertexSpeculars[i]);
+			LightImmediateVertex(
+				{v.x, v.y, v.z},
+				{v.nx, v.ny, v.nz},
+				draw.material,
+				eye,
+				pixelState.specular,
+				m_vertexColors[i],
+				m_vertexSpeculars[i]
+			);
 		}
 	};
 
@@ -1592,11 +1717,18 @@ HRESULT Direct3DRMSoftwareRenderer::SubmitImmediate(const ImmediateDraw& draw)
 			c1 = m_vertexColors[i1];
 			c2 = m_vertexColors[i2];
 		}
-		const SDL_Color none = {0, 0, 0, 0};
+		SDL_Color s0 = m_vertexSpeculars[i0], s1, s2;
+		if (appearance.flat) {
+			s1 = s2 = s0;
+		}
+		else {
+			s1 = m_vertexSpeculars[i1];
+			s2 = m_vertexSpeculars[i2];
+		}
 		SWLitVertex tri[3] = {
-			{p0, {draw.vertices[i0].tu, draw.vertices[i0].tv}, c0, none},
-			{p1, {draw.vertices[i1].tu, draw.vertices[i1].tv}, c1, none},
-			{p2, {draw.vertices[i2].tu, draw.vertices[i2].tv}, c2, none},
+			{p0, {draw.vertices[i0].tu, draw.vertices[i0].tv}, c0, s0},
+			{p1, {draw.vertices[i1].tu, draw.vertices[i1].tv}, c1, s1},
+			{p2, {draw.vertices[i2].tu, draw.vertices[i2].tv}, c2, s2},
 		};
 		DrawImmediateClipped(tri, pixelState);
 	}

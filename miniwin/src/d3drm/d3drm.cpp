@@ -112,17 +112,36 @@ struct Direct3DRMMaterialImpl : public Direct3DRMObjectBaseImpl<IDirect3DRMMater
 	D3DVALUE GetPower() override { return m_power; }
 	HRESULT SetSpecular(D3DVALUE r, D3DVALUE g, D3DVALUE b) override
 	{
-		MINIWIN_NOT_IMPLEMENTED();
-		return E_NOTIMPL;
+		m_specular[0] = r;
+		m_specular[1] = g;
+		m_specular[2] = b;
+		return DD_OK;
 	}
 	HRESULT SetEmissive(D3DVALUE r, D3DVALUE g, D3DVALUE b) override
 	{
-		MINIWIN_NOT_IMPLEMENTED();
-		return E_NOTIMPL;
+		m_emissive[0] = r;
+		m_emissive[1] = g;
+		m_emissive[2] = b;
+		return DD_OK;
 	}
+	HRESULT GetSpecular(D3DVALUE* r, D3DVALUE* g, D3DVALUE* b) override { return Get(m_specular, r, g, b); }
+	HRESULT GetEmissive(D3DVALUE* r, D3DVALUE* g, D3DVALUE* b) override { return Get(m_emissive, r, g, b); }
 
 private:
+	static HRESULT Get(const D3DVALUE (&value)[3], D3DVALUE* r, D3DVALUE* g, D3DVALUE* b)
+	{
+		if (!r || !g || !b) {
+			return DDERR_INVALIDPARAMS;
+		}
+		*r = value[0];
+		*g = value[1];
+		*b = value[2];
+		return DD_OK;
+	}
 	D3DVALUE m_power;
+	// D3DRM's defaults: white specular, no emission.
+	D3DVALUE m_specular[3] = {1.f, 1.f, 1.f};
+	D3DVALUE m_emissive[3] = {0.f, 0.f, 0.f};
 };
 
 HRESULT Direct3DRMImpl::QueryInterface(const GUID& riid, void** ppvObject)

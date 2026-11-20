@@ -14,6 +14,7 @@ struct DeferredDrawCommand {
 	Matrix3x3 normalMatrix;
 	Appearance appearance;
 	float depth;
+	uint64_t lightMask;
 };
 
 class Direct3DRMDeviceImpl;
@@ -69,13 +70,23 @@ struct Direct3DRMViewportImpl : public Direct3DRMObjectBaseImpl<IDirect3DRMViewp
 
 private:
 	HRESULT RenderScene();
-	void CollectLightsFromFrame(IDirect3DRMFrame* frame, D3DRMMATRIX4D parentMatrix, std::vector<SceneLight>& lights);
-	void CollectMeshesFromFrame(IDirect3DRMFrame* frame, D3DRMMATRIX4D parentMatrix);
+	void CollectLightsFromFrame(IDirect3DRMFrame* frame, D3DRMMATRIX4D parentMatrix);
+	// lightMask has a bit for each of m_lights that lights the frame's
+	// parent; the frame adds the lights whose enable frame it is.
+	void CollectMeshesFromFrame(IDirect3DRMFrame* frame, D3DRMMATRIX4D parentMatrix, uint64_t lightMask);
+	// Push the lights in mask to the renderer, unless they are pushed already.
+	void UseLights(uint64_t mask);
 	void BuildViewFrustumPlanes();
 	void RenderUserVisual(struct Direct3DRMUserVisualImpl* visual, const D3DRMMATRIX4D worldMatrix);
 	Direct3DRMRenderer* m_renderer;
 	IDirect3DRMDevice* m_device; // the device the viewport was created on; not owned
 	std::vector<DeferredDrawCommand> m_deferredDraws;
+	// The scene's lights, and for each its enable frame (nullptr when it
+	// lights every frame). Lights past the mask's 64 bits light every frame.
+	std::vector<SceneLight> m_lights;
+	std::vector<IDirect3DRMFrame*> m_lightEnableFrames;
+	std::vector<SceneLight> m_activeLights;
+	uint64_t m_pushedLightMask = 0;
 	D3DCOLOR m_backgroundColor = 0xFF000000;
 	LONG m_x;
 	LONG m_y;

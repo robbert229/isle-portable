@@ -277,6 +277,8 @@ typedef IDirect3DRMMaterial *LPDIRECT3DRMMATERIAL, **LPLPDIRECT3DRMMATERIAL;
 struct IDirect3DRMMaterial2 : public IDirect3DRMMaterial {
 	virtual HRESULT SetSpecular(D3DVALUE r, D3DVALUE g, D3DVALUE b) = 0;
 	virtual HRESULT SetEmissive(D3DVALUE r, D3DVALUE g, D3DVALUE b) = 0;
+	virtual HRESULT GetSpecular(D3DVALUE* r, D3DVALUE* g, D3DVALUE* b) = 0;
+	virtual HRESULT GetEmissive(D3DVALUE* r, D3DVALUE* g, D3DVALUE* b) = 0;
 };
 typedef IDirect3DRMMaterial2* LPDIRECT3DRMMATERIAL2;
 
@@ -346,6 +348,16 @@ struct IDirect3DRMLight : public IDirect3DRMObject {
 	virtual HRESULT SetEnableFrame(IDirect3DRMFrame* frame) = 0;
 	virtual D3DRMLIGHTTYPE GetType() = 0;
 	virtual D3DCOLOR GetColor() = 0;
+	virtual HRESULT SetConstantAttenuation(D3DVALUE attenuation) = 0;
+	virtual HRESULT SetLinearAttenuation(D3DVALUE attenuation) = 0;
+	virtual HRESULT SetQuadraticAttenuation(D3DVALUE attenuation) = 0;
+	virtual D3DVALUE GetRange() = 0;
+	virtual D3DVALUE GetUmbra() = 0;
+	virtual D3DVALUE GetPenumbra() = 0;
+	virtual D3DVALUE GetConstantAttenuation() = 0;
+	virtual D3DVALUE GetLinearAttenuation() = 0;
+	virtual D3DVALUE GetQuadraticAttenuation() = 0;
+	virtual HRESULT GetEnableFrame(IDirect3DRMFrame** frame) = 0;
 };
 typedef IDirect3DRMLight* LPDIRECT3DRMLIGHT;
 
