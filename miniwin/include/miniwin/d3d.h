@@ -51,10 +51,18 @@ enum class D3DCOLORMODEL {
 	MONO,
 };
 
+#define D3DCLEAR_TARGET 0x1
+#define D3DCLEAR_ZBUFFER 0x2
+
 // --- Structs ---
 struct D3DVECTOR {
 	float x, y, z;
 };
+
+struct D3DRECT {
+	LONG x1, y1, x2, y2;
+};
+typedef D3DRECT* LPD3DRECT;
 
 struct D3DDEVICEDESC {
 	D3DDeviceDescFlags dwFlags;

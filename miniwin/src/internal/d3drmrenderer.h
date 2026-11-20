@@ -59,6 +59,15 @@ public:
 	virtual void SetDither(bool dither) = 0;
 	virtual void SetPalette(SDL_Palette* palette) {}
 	virtual bool UsesPalettedSurfaces() const { return false; }
+	// The rectangle 3D drawing is projected into and clipped to, in virtual
+	// coordinates; nullptr is the whole target. Backends that ignore it draw
+	// every viewport over the whole target.
+	virtual void SetViewportRect(const D3DRECT* rect) {}
+	// Clear a rectangle, in virtual coordinates, of the target (D3DCLEAR_TARGET,
+	// to an RGB colour) and of the z-buffer (D3DCLEAR_ZBUFFER, to z). The
+	// default clears the whole target through Clear, whatever the rectangle,
+	// and leaves the z-buffer to BeginFrame.
+	virtual HRESULT ClearRect(const D3DRECT& rect, DWORD flags, D3DCOLOR color, float z);
 
 protected:
 	using DestroyCallback = void (*)(Direct3DRMRenderer* renderer, Uint32 id);

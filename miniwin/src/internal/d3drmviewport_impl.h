@@ -20,7 +20,7 @@ class Direct3DRMDeviceImpl;
 class Direct3DRMFrameImpl;
 
 struct Direct3DRMViewportImpl : public Direct3DRMObjectBaseImpl<IDirect3DRMViewport> {
-	Direct3DRMViewportImpl(DWORD width, DWORD height, Direct3DRMRenderer* renderer);
+	Direct3DRMViewportImpl(LONG x, LONG y, DWORD width, DWORD height, Direct3DRMRenderer* renderer);
 	~Direct3DRMViewportImpl() override;
 	HRESULT Render(IDirect3DRMFrame* group) override;
 	/**
@@ -38,6 +38,8 @@ struct Direct3DRMViewportImpl : public Direct3DRMObjectBaseImpl<IDirect3DRMViewp
 	D3DVALUE GetBack() override;
 	HRESULT SetField(D3DVALUE field) override;
 	D3DVALUE GetField() override;
+	LONG GetX() override { return m_x; }
+	LONG GetY() override { return m_y; }
 	DWORD GetWidth() override { return m_virtualWidth; }
 	DWORD GetHeight() override { return m_virtualHeight; }
 	HRESULT Transform(D3DRMVECTOR4D* screen, D3DVECTOR* world) override;
@@ -47,6 +49,9 @@ struct Direct3DRMViewportImpl : public Direct3DRMObjectBaseImpl<IDirect3DRMViewp
 	void UpdateProjectionMatrix();
 
 private:
+	// Make this the viewport the renderer projects into and clips to.
+	void ApplyToRenderer();
+	bool CoversDevice() const;
 	HRESULT RenderScene();
 	void CollectLightsFromFrame(IDirect3DRMFrame* frame, D3DRMMATRIX4D parentMatrix, std::vector<SceneLight>& lights);
 	void CollectMeshesFromFrame(IDirect3DRMFrame* frame, D3DRMMATRIX4D parentMatrix);
@@ -54,6 +59,8 @@ private:
 	Direct3DRMRenderer* m_renderer;
 	std::vector<DeferredDrawCommand> m_deferredDraws;
 	D3DCOLOR m_backgroundColor = 0xFF000000;
+	LONG m_x;
+	LONG m_y;
 	DWORD m_virtualWidth;
 	DWORD m_virtualHeight;
 	D3DRMMATRIX4D m_viewProjectionwMatrix;

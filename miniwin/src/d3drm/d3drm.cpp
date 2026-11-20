@@ -194,7 +194,7 @@ HRESULT Direct3DRMImpl::CreateViewport(
 )
 {
 	auto device = static_cast<Direct3DRMDevice2Impl*>(iDevice);
-	auto* viewport = new Direct3DRMViewportImpl(width, height, device->m_renderer);
+	auto* viewport = new Direct3DRMViewportImpl(x, y, width, height, device->m_renderer);
 	if (camera) {
 		viewport->SetCamera(camera);
 	}

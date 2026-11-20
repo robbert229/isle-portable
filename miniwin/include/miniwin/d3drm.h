@@ -292,6 +292,8 @@ struct IDirect3DRMViewport : public IDirect3DRMObject {
 	virtual D3DVALUE GetBack() = 0;
 	virtual HRESULT SetField(D3DVALUE field) = 0;
 	virtual D3DVALUE GetField() = 0;
+	virtual LONG GetX() = 0;
+	virtual LONG GetY() = 0;
 	virtual DWORD GetWidth() = 0;
 	virtual DWORD GetHeight() = 0;
 	virtual HRESULT Transform(D3DRMVECTOR4D* screen, D3DVECTOR* world) = 0;

@@ -14,9 +14,12 @@
 #include <functional>
 #include <math.h>
 
-Direct3DRMViewportImpl::Direct3DRMViewportImpl(DWORD width, DWORD height, Direct3DRMRenderer* renderer)
-	: m_virtualWidth(width), m_virtualHeight(height), m_renderer(renderer)
+Direct3DRMViewportImpl::Direct3DRMViewportImpl(LONG x, LONG y, DWORD width, DWORD height, Direct3DRMRenderer* renderer)
+	: m_x(x), m_y(y), m_virtualWidth(width), m_virtualHeight(height), m_renderer(renderer)
 {
+	if (m_renderer) {
+		UpdateProjectionMatrix();
+	}
 }
 
 Direct3DRMViewportImpl::~Direct3DRMViewportImpl()
@@ -317,6 +320,8 @@ HRESULT Direct3DRMViewportImpl::RenderScene()
 
 	D3DRMMATRIX4D identity = {{1.f, 0.f, 0.f, 0.f}, {0.f, 1.f, 0.f, 0.f}, {0.f, 0.f, 1.f, 0.f}, {0.f, 0.f, 0.f, 1.f}};
 
+	ApplyToRenderer();
+
 	std::vector<SceneLight> lights;
 	CollectLightsFromFrame(m_rootFrame, identity, lights);
 	m_renderer->PushLights(lights.data(), lights.size());
@@ -324,9 +329,6 @@ HRESULT Direct3DRMViewportImpl::RenderScene()
 	if (status != DD_OK) {
 		return status;
 	}
-
-	BuildViewFrustumPlanes();
-	m_renderer->SetFrustumPlanes(m_frustumPlanes);
 
 	CollectMeshesFromFrame(m_rootFrame, identity);
 
@@ -366,18 +368,31 @@ HRESULT Direct3DRMViewportImpl::ForceUpdate(int x, int y, int w, int h)
 	return DD_OK;
 }
 
+// Clear the viewport's rectangle: the target to the scene's background
+// colour and the z-buffer to the back clipping plane.
 HRESULT Direct3DRMViewportImpl::Clear()
 {
 	if (!m_renderer) {
 		return DDERR_GENERIC;
 	}
 
-	uint8_t r = (m_backgroundColor >> 16) & 0xFF;
-	uint8_t g = (m_backgroundColor >> 8) & 0xFF;
-	uint8_t b = m_backgroundColor & 0xFF;
-	m_renderer->Clear(r / 255.0f, g / 255.0f, b / 255.0f);
+	D3DRECT rect = {m_x, m_y, m_x + (LONG) m_virtualWidth, m_y + (LONG) m_virtualHeight};
+	return m_renderer->ClearRect(rect, D3DCLEAR_TARGET | D3DCLEAR_ZBUFFER, m_backgroundColor, 1.0f);
+}
 
-	return DD_OK;
+bool Direct3DRMViewportImpl::CoversDevice() const
+{
+	return m_x == 0 && m_y == 0 && (int) m_virtualWidth == m_renderer->GetVirtualWidth() &&
+		   (int) m_virtualHeight == m_renderer->GetVirtualHeight();
+}
+
+void Direct3DRMViewportImpl::ApplyToRenderer()
+{
+	D3DRECT rect = {m_x, m_y, m_x + (LONG) m_virtualWidth, m_y + (LONG) m_virtualHeight};
+	m_renderer->SetViewportRect(CoversDevice() ? nullptr : &rect);
+	m_renderer->SetProjection(m_projectionMatrix, m_front, m_back);
+	BuildViewFrustumPlanes();
+	m_renderer->SetFrustumPlanes(m_frustumPlanes);
 }
 
 HRESULT Direct3DRMViewportImpl::SetCamera(IDirect3DRMFrame* camera)
@@ -446,6 +461,11 @@ void Direct3DRMViewportImpl::UpdateProjectionMatrix()
 {
 	float virtualAspect = (float) m_virtualWidth / (float) m_virtualHeight;
 	float windowAspect = (float) m_renderer->GetWidth() / (float) m_renderer->GetHeight();
+	// A viewport smaller than the device is drawn into its own rectangle,
+	// scaled with the 2D image, so it keeps its own aspect.
+	if (!CoversDevice()) {
+		windowAspect = virtualAspect;
+	}
 
 	float base_f = m_front / m_field;
 	float f_v = base_f * virtualAspect;
@@ -489,8 +509,8 @@ inline void MultiplyMatrixVec4(D3DRMVECTOR4D& out, const D3DRMMATRIX4D& mat, con
 }
 
 // D3DRM's screen vectors are homogeneous: x / w and y / w are device
-// coordinates and z / w is the depth, 0 at the front clipping plane and 1 at
-// the back one.
+// coordinates (the viewport's offset included) and z / w is the depth, 0 at
+// the front clipping plane and 1 at the back one.
 HRESULT Direct3DRMViewportImpl::Transform(D3DRMVECTOR4D* screen, D3DVECTOR* world)
 {
 	D3DRMVECTOR4D worldVec = {world->x, world->y, world->z, 1.0f};
@@ -501,8 +521,8 @@ HRESULT Direct3DRMViewportImpl::Transform(D3DRMVECTOR4D* screen, D3DVECTOR* worl
 
 	float w = projVec.w;
 	float invW = w != 0.0f ? 1.0f / w : 1.0f;
-	float screenX = FromNDC(projVec.x * invW, m_virtualWidth);
-	float screenY = FromNDC(-projVec.y * invW, m_virtualHeight); // y grows down the screen
+	float screenX = m_x + FromNDC(projVec.x * invW, m_virtualWidth);
+	float screenY = m_y + FromNDC(-projVec.y * invW, m_virtualHeight); // y grows down the screen
 	float depth = projVec.z * invW;
 
 	*screen = {screenX * w, screenY * w, depth * w, w};
@@ -516,8 +536,8 @@ HRESULT Direct3DRMViewportImpl::InverseTransform(D3DVECTOR* world, D3DRMVECTOR4D
 	float screenY = screen->y / w;
 	float depth = screen->z / w;
 
-	float ndcX = screenX / m_virtualWidth * 2.0f - 1.0f;
-	float ndcY = 1.0f - screenY / m_virtualHeight * 2.0f;
+	float ndcX = (screenX - m_x) / m_virtualWidth * 2.0f - 1.0f;
+	float ndcY = 1.0f - (screenY - m_y) / m_virtualHeight * 2.0f;
 
 	// Undo the projection: depth = back / (back - front) * (1 - front / z).
 	float viewZ = m_front * m_back / (m_back - depth * (m_back - m_front));

@@ -53,6 +53,14 @@ void Direct3DRMRenderer::OnObjectDestroyed(IDirect3DRMObject* object, void* arg)
 	delete ctx;
 }
 
+HRESULT Direct3DRMRenderer::ClearRect(const D3DRECT& rect, DWORD flags, D3DCOLOR color, float z)
+{
+	if (flags & D3DCLEAR_TARGET) {
+		Clear(((color >> 16) & 0xff) / 255.0f, ((color >> 8) & 0xff) / 255.0f, (color & 0xff) / 255.0f);
+	}
+	return DD_OK;
+}
+
 void Miniwin_SetupWindowCreateProperties(SDL_PropertiesID props)
 {
 #if (defined(USE_OPENGL1) || defined(USE_OPENGLES2) || defined(USE_OPENGLES3)) && !defined(__3DS__) &&                 \

@@ -153,8 +153,9 @@ void Direct3DRMSoftwareRenderer::ProjectVertex(const D3DVECTOR& v, D3DRMVECTOR4D
 	}
 
 	// Map from NDC [-1,1] to screen coordinates
-	p.x = (px * 0.5f + 0.5f) * m_width;
-	p.y = (1.0f - (py * 0.5f + 0.5f)) * m_height;
+	// Map from NDC [-1,1] to the viewport's pixels
+	p.x = m_viewportX + (px * 0.5f + 0.5f) * m_viewportW;
+	p.y = m_viewportY + (1.0f - (py * 0.5f + 0.5f)) * m_viewportH;
 	p.z = pz;
 }
 
@@ -504,8 +505,8 @@ void Direct3DRMSoftwareRenderer::DrawTriangleProjected(
 		std::swap(verts[0], verts[1]);
 	}
 
-	int minY = std::max(0, (int) std::ceil(verts[0].y));
-	int maxY = std::min((int) m_height - 1, (int) std::floor(verts[2].y));
+	int minY = std::max(m_clipMinY, (int) std::ceil(verts[0].y));
+	int maxY = std::min(m_clipMaxY, (int) std::floor(verts[2].y));
 	if (minY > maxY) {
 		return;
 	}
@@ -538,8 +539,8 @@ void Direct3DRMSoftwareRenderer::DrawTriangleProjected(
 		const SWEdge& left = (shortEdge.x <= longEdge.x) ? shortEdge : longEdge;
 		const SWEdge& right = (shortEdge.x <= longEdge.x) ? longEdge : shortEdge;
 
-		int startX = std::max(0, (int) std::ceil(left.x));
-		int endX = std::min((int) m_width - 1, (int) std::floor(right.x));
+		int startX = std::max(m_clipMinX, (int) std::ceil(left.x));
+		int endX = std::min(m_clipMaxX, (int) std::floor(right.x));
 
 		float span = right.x - left.x;
 		if (span <= 0.0f || startX > endX) {
@@ -1040,6 +1041,7 @@ void Direct3DRMSoftwareRenderer::Resize(int width, int height, const ViewportTra
 		SDL_CreateTexture(m_renderer, SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_STREAMING, m_width, m_height);
 
 	m_zBuffer.resize(m_width * m_height);
+	SetViewportRect(nullptr);
 }
 
 void Direct3DRMSoftwareRenderer::Clear(float r, float g, float b)
@@ -1118,4 +1120,64 @@ void Direct3DRMSoftwareRenderer::Download(SDL_Surface* target)
 	};
 
 	SDL_BlitSurfaceScaled(m_renderedImage, &srcRect, target, nullptr, SDL_SCALEMODE_LINEAR);
+}
+
+// A rectangle in virtual coordinates as render pixels, scaled and offset as
+// the 2D image is, and clipped to the target.
+SDL_Rect Direct3DRMSoftwareRenderer::ToRenderPixels(const D3DRECT& rect) const
+{
+	float scale = m_viewportTransform.scale;
+	int x1 = static_cast<int>(std::lround(rect.x1 * scale + m_viewportTransform.offsetX));
+	int y1 = static_cast<int>(std::lround(rect.y1 * scale + m_viewportTransform.offsetY));
+	int x2 = static_cast<int>(std::lround(rect.x2 * scale + m_viewportTransform.offsetX));
+	int y2 = static_cast<int>(std::lround(rect.y2 * scale + m_viewportTransform.offsetY));
+	x1 = std::clamp(x1, 0, m_width);
+	y1 = std::clamp(y1, 0, m_height);
+	x2 = std::clamp(x2, x1, m_width);
+	y2 = std::clamp(y2, y1, m_height);
+	return {x1, y1, x2 - x1, y2 - y1};
+}
+
+void Direct3DRMSoftwareRenderer::SetViewportRect(const D3DRECT* rect)
+{
+	// A viewport covering the device keeps the whole target: its projection
+	// already accounts for the window's aspect.
+	SDL_Rect pixels = rect ? ToRenderPixels(*rect) : SDL_Rect{0, 0, m_width, m_height};
+	m_viewportX = static_cast<float>(pixels.x);
+	m_viewportY = static_cast<float>(pixels.y);
+	m_viewportW = static_cast<float>(pixels.w);
+	m_viewportH = static_cast<float>(pixels.h);
+	m_clipMinX = pixels.x;
+	m_clipMinY = pixels.y;
+	m_clipMaxX = pixels.x + pixels.w - 1;
+	m_clipMaxY = pixels.y + pixels.h - 1;
+}
+
+HRESULT Direct3DRMSoftwareRenderer::ClearRect(const D3DRECT& rect, DWORD flags, D3DCOLOR color, float z)
+{
+	if (!m_renderedImage) {
+		return DDERR_GENERIC;
+	}
+	SDL_Rect pixels = ToRenderPixels(rect);
+	if (pixels.w <= 0 || pixels.h <= 0) {
+		return DD_OK;
+	}
+	if (flags & D3DCLEAR_TARGET) {
+		const SDL_PixelFormatDetails* details = SDL_GetPixelFormatDetails(m_renderedImage->format);
+		Uint32 fill = SDL_MapRGBA(
+			details,
+			SDL_GetSurfacePalette(m_renderedImage),
+			(color >> 16) & 0xff,
+			(color >> 8) & 0xff,
+			color & 0xff,
+			0xff
+		);
+		SDL_FillSurfaceRect(m_renderedImage, &pixels, fill);
+	}
+	if (flags & D3DCLEAR_ZBUFFER) {
+		for (int y = pixels.y; y < pixels.y + pixels.h; ++y) {
+			std::fill_n(&m_zBuffer[y * m_width + pixels.x], pixels.w, z);
+		}
+	}
+	return DD_OK;
 }
