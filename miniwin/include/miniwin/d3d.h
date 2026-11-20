@@ -210,6 +210,10 @@ enum class D3DBLEND : uint32_t {
 	SRCALPHASAT = 11,
 };
 
+#define D3DCLEAR_TARGET 0x1
+#define D3DCLEAR_ZBUFFER 0x2
+#define D3DCLEAR_STENCIL 0x4
+
 // The one vertex type the immediate-mode draw path takes: position, normal
 // and one texture coordinate, transformed and lit by the device. It is DX5's
 // D3DVT_VERTEX and DX6's D3DFVF_VERTEX.

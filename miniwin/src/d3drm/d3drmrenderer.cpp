@@ -1,5 +1,8 @@
 #include "d3dmaterial_impl.h"
 #include "d3drmrenderer.h"
+#include "d3drm_impl.h"
+#include "d3drmviewport_impl.h"
+#include "d3dviewport_impl.h"
 #include "miniwin.h"
 #ifdef USE_OPENGL1
 #include "d3drmrenderer_opengl1.h"
@@ -150,6 +153,25 @@ HRESULT Direct3DRMRenderer::SetCurrentViewport(IDirect3DViewport3* viewport)
 		m_currentViewport->Release();
 	}
 	m_currentViewport = viewport;
+	// Draws now project into and clip to that viewport's rectangle.
+	if (auto* impl = dynamic_cast<Direct3DViewportImpl*>(viewport)) {
+		if (impl->m_owner && impl->m_owner->GetRenderer() == this) {
+			impl->m_owner->ApplyToRenderer();
+		}
+	}
+	return DD_OK;
+}
+
+HRESULT Direct3DRMRenderer::ClearRect(const D3DRECT& rect, DWORD flags, D3DCOLOR color, float z)
+{
+	if (!(flags & D3DCLEAR_TARGET)) {
+		return DD_OK; // this backend clears its z-buffer in every BeginFrame
+	}
+	if (rect.x1 > 0 || rect.y1 > 0 || rect.x2 < m_virtualWidth || rect.y2 < m_virtualHeight) {
+		MINIWIN_NOT_IMPLEMENTED();
+		return DDERR_UNSUPPORTED;
+	}
+	Clear(((color >> 16) & 0xff) / 255.0f, ((color >> 8) & 0xff) / 255.0f, (color & 0xff) / 255.0f);
 	return DD_OK;
 }
 

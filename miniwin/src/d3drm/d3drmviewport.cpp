@@ -11,6 +11,7 @@
 
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_stdinc.h>
+#include <algorithm>
 #include <cassert>
 #include <float.h>
 #include <functional>
@@ -20,10 +21,15 @@ Direct3DRMViewportImpl::Direct3DRMViewportImpl(
 	DWORD width,
 	DWORD height,
 	Direct3DRMRenderer* renderer,
-	IDirect3DRMDevice* device
+	IDirect3DRMDevice* device,
+	LONG x,
+	LONG y
 )
-	: m_virtualWidth(width), m_virtualHeight(height), m_renderer(renderer), m_device(device)
+	: m_virtualWidth(width), m_virtualHeight(height), m_renderer(renderer), m_device(device), m_x(x), m_y(y)
 {
+	if (m_renderer) {
+		UpdateProjectionMatrix();
+	}
 }
 
 Direct3DRMViewportImpl::~Direct3DRMViewportImpl()
@@ -33,6 +39,7 @@ Direct3DRMViewportImpl::~Direct3DRMViewportImpl()
 		m_camera = nullptr;
 	}
 	if (m_d3dViewport) {
+		m_d3dViewport->m_owner = nullptr;
 		m_d3dViewport->Release();
 		m_d3dViewport = nullptr;
 	}
@@ -160,9 +167,9 @@ void Direct3DRMViewportImpl::CollectLightsFromFrame(
 void Direct3DRMViewportImpl::BuildViewFrustumPlanes()
 {
 
-	float aspect = (float) m_renderer->GetWidth() / (float) m_renderer->GetHeight();
-	float tanFovX = m_field;
-	float tanFovY = m_field / aspect;
+	// The half-extents of the view at z = 1, as the projection maps them.
+	float tanFovX = 1.0f / m_projectionMatrix[0][0];
+	float tanFovY = 1.0f / m_projectionMatrix[1][1];
 
 	// View-space frustum planes
 	m_frustumPlanes[0] = {Normalize({tanFovX, 0.0f, 1.0f}), 0.0f};  // Left
@@ -367,6 +374,8 @@ HRESULT Direct3DRMViewportImpl::RenderScene()
 
 	D3DRMMATRIX4D identity = {{1.f, 0.f, 0.f, 0.f}, {0.f, 1.f, 0.f, 0.f}, {0.f, 0.f, 1.f, 0.f}, {0.f, 0.f, 0.f, 1.f}};
 
+	ApplyToRenderer();
+
 	std::vector<SceneLight> lights;
 	CollectLightsFromFrame(m_rootFrame, identity, lights);
 	m_renderer->PushLights(lights.data(), lights.size());
@@ -374,9 +383,6 @@ HRESULT Direct3DRMViewportImpl::RenderScene()
 	if (status != DD_OK) {
 		return status;
 	}
-
-	BuildViewFrustumPlanes();
-	m_renderer->SetFrustumPlanes(m_frustumPlanes);
 
 	CollectMeshesFromFrame(m_rootFrame, identity);
 
@@ -418,16 +424,39 @@ HRESULT Direct3DRMViewportImpl::ForceUpdate(int x, int y, int w, int h)
 
 HRESULT Direct3DRMViewportImpl::Clear()
 {
+	return Clear(D3DRMCLEAR_ALL);
+}
+
+void Direct3DRMViewportImpl::ApplyToRenderer()
+{
+	if (!m_renderer) {
+		return;
+	}
+	bool whole = m_x == 0 && m_y == 0 && (int) m_virtualWidth == m_renderer->GetVirtualWidth() &&
+				 (int) m_virtualHeight == m_renderer->GetVirtualHeight();
+	D3DRECT rect = {m_x, m_y, m_x + (LONG) m_virtualWidth, m_y + (LONG) m_virtualHeight};
+	m_renderer->SetViewportRect(whole ? nullptr : &rect);
+	m_renderer->SetProjection(m_projectionMatrix, m_front, m_back);
+	BuildViewFrustumPlanes();
+	m_renderer->SetFrustumPlanes(m_frustumPlanes);
+}
+
+HRESULT Direct3DRMViewportImpl::ClearRect(const D3DRECT* rect, DWORD flags, D3DCOLOR color, float z)
+{
 	if (!m_renderer) {
 		return DDERR_GENERIC;
 	}
-
-	uint8_t r = (m_backgroundColor >> 16) & 0xFF;
-	uint8_t g = (m_backgroundColor >> 8) & 0xFF;
-	uint8_t b = m_backgroundColor & 0xFF;
-	m_renderer->Clear(r / 255.0f, g / 255.0f, b / 255.0f);
-
-	return DD_OK;
+	D3DRECT area = {m_x, m_y, m_x + (LONG) m_virtualWidth, m_y + (LONG) m_virtualHeight};
+	if (rect) {
+		area.x1 = std::max(area.x1, rect->x1);
+		area.y1 = std::max(area.y1, rect->y1);
+		area.x2 = std::min(area.x2, rect->x2);
+		area.y2 = std::min(area.y2, rect->y2);
+	}
+	if (area.x1 >= area.x2 || area.y1 >= area.y2) {
+		return DD_OK;
+	}
+	return m_renderer->ClearRect(area, flags, color, z);
 }
 
 HRESULT Direct3DRMViewportImpl::SetCamera(IDirect3DRMFrame* camera)
@@ -496,6 +525,13 @@ void Direct3DRMViewportImpl::UpdateProjectionMatrix()
 {
 	float virtualAspect = (float) m_virtualWidth / (float) m_virtualHeight;
 	float windowAspect = (float) m_renderer->GetWidth() / (float) m_renderer->GetHeight();
+	// A viewport smaller than the device is drawn into its own rectangle,
+	// scaled with the 2D image, so it keeps its own aspect.
+	bool whole = m_x == 0 && m_y == 0 && (int) m_virtualWidth == m_renderer->GetVirtualWidth() &&
+				 (int) m_virtualHeight == m_renderer->GetVirtualHeight();
+	if (!whole) {
+		windowAspect = virtualAspect;
+	}
 
 	float base_f = m_front / m_field;
 	float f_v = base_f * virtualAspect;
@@ -905,10 +941,28 @@ void Direct3DRMViewportImpl::CloseDevice()
 }
 
 // IDirect3DRMViewport2 interface
+// Clear the viewport's rectangle: the target to the scene's background
+// colour, the z-buffer to the far plane.
 HRESULT Direct3DRMViewportImpl::Clear(DWORD flags)
 {
-	MINIWIN_NOT_IMPLEMENTED();
-	return E_NOTIMPL;
+	if (!m_renderer) {
+		return DDERR_GENERIC;
+	}
+	if (m_camera) {
+		auto* scene = static_cast<Direct3DRMFrameImpl*>(m_camera);
+		while (scene->m_parent && scene->m_parent != scene) {
+			scene = scene->m_parent;
+		}
+		m_backgroundColor = scene->m_backgroundColor;
+	}
+	DWORD d3dFlags = 0;
+	if (flags & D3DRMCLEAR_TARGET) {
+		d3dFlags |= D3DCLEAR_TARGET;
+	}
+	if (flags & D3DRMCLEAR_ZBUFFER) {
+		d3dFlags |= D3DCLEAR_ZBUFFER;
+	}
+	return ClearRect(nullptr, d3dFlags, m_backgroundColor | 0xff000000, 1.0f);
 }
 
 HRESULT Direct3DRMViewportImpl::Render(IDirect3DRMFrame3* frame)
@@ -931,14 +985,12 @@ HRESULT Direct3DRMViewportImpl::GetCamera(IDirect3DRMFrame3** camera)
 
 LONG Direct3DRMViewportImpl::GetX()
 {
-	MINIWIN_NOT_IMPLEMENTED();
-	return 0;
+	return m_x;
 }
 
 LONG Direct3DRMViewportImpl::GetY()
 {
-	MINIWIN_NOT_IMPLEMENTED();
-	return 0;
+	return m_y;
 }
 
 HRESULT Direct3DRMViewportImpl::GetDirect3DViewport(IDirect3DViewport** viewport)
@@ -947,9 +999,9 @@ HRESULT Direct3DRMViewportImpl::GetDirect3DViewport(IDirect3DViewport** viewport
 		return DDERR_INVALIDPARAMS;
 	}
 	if (!m_d3dViewport) {
-		m_d3dViewport = static_cast<IDirect3DViewport*>(new Direct3DViewportImpl);
+		m_d3dViewport = new Direct3DViewportImpl(this);
 	}
 	m_d3dViewport->AddRef();
-	*viewport = m_d3dViewport;
+	*viewport = static_cast<IDirect3DViewport*>(m_d3dViewport);
 	return DD_OK;
 }

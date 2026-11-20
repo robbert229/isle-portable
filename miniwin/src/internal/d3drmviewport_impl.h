@@ -24,7 +24,9 @@ struct Direct3DRMViewportImpl : public Direct3DRMObjectBaseImpl<IDirect3DRMViewp
 		DWORD width,
 		DWORD height,
 		Direct3DRMRenderer* renderer,
-		IDirect3DRMDevice* device = nullptr
+		IDirect3DRMDevice* device = nullptr,
+		LONG x = 0,
+		LONG y = 0
 	);
 	~Direct3DRMViewportImpl() override;
 	HRESULT QueryInterface(const GUID& riid, void** ppvObject) override;
@@ -59,6 +61,11 @@ struct Direct3DRMViewportImpl : public Direct3DRMObjectBaseImpl<IDirect3DRMViewp
 	LONG GetY() override;
 	void CloseDevice();
 	void UpdateProjectionMatrix();
+	// Make this the viewport the renderer projects into and clips to.
+	void ApplyToRenderer();
+	// Clear the viewport's rectangle, or the part of rect inside it.
+	HRESULT ClearRect(const D3DRECT* rect, DWORD flags, D3DCOLOR color, float z);
+	Direct3DRMRenderer* GetRenderer() const { return m_renderer; }
 
 private:
 	HRESULT RenderScene();
@@ -70,6 +77,8 @@ private:
 	IDirect3DRMDevice* m_device; // the device the viewport was created on; not owned
 	std::vector<DeferredDrawCommand> m_deferredDraws;
 	D3DCOLOR m_backgroundColor = 0xFF000000;
+	LONG m_x;
+	LONG m_y;
 	DWORD m_virtualWidth;
 	DWORD m_virtualHeight;
 	D3DRMMATRIX4D m_viewProjectionwMatrix;
@@ -78,7 +87,7 @@ private:
 	D3DRMMATRIX4D m_inverseProjectionMatrix;
 	IDirect3DRMFrame* m_rootFrame = nullptr;
 	IDirect3DRMFrame* m_camera = nullptr;
-	IDirect3DViewport* m_d3dViewport = nullptr;
+	struct Direct3DViewportImpl* m_d3dViewport = nullptr;
 	D3DVALUE m_front = 1.f;
 	D3DVALUE m_back = 10.f;
 	D3DVALUE m_field = 0.5f;

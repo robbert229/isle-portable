@@ -63,6 +63,8 @@ public:
 	void SetDither(bool dither) override;
 	void SetPalette(SDL_Palette* palette) override;
 	HRESULT SubmitImmediate(const ImmediateDraw& draw) override;
+	void SetViewportRect(const D3DRECT* rect) override;
+	HRESULT ClearRect(const D3DRECT& rect, DWORD flags, D3DCOLOR color, float z) override;
 
 private:
 	void ClearZBuffer();
@@ -130,6 +132,14 @@ private:
 	std::vector<SDL_Color> m_vertexSpeculars;
 	std::vector<Uint8> m_vertexLit;
 	Plane m_frustumPlanes[6];
+	// The current viewport in render pixels: projection maps NDC onto
+	// m_viewport*, and triangles are clipped to the m_clip* pixel range.
+	float m_viewportX = 0.0f, m_viewportY = 0.0f, m_viewportW = 0.0f, m_viewportH = 0.0f;
+	int m_clipMinX = 0, m_clipMinY = 0, m_clipMaxX = -1, m_clipMaxY = -1;
+	// Set once the client clears the z-buffer itself (D3DCLEAR_ZBUFFER);
+	// until then BeginFrame clears it, as LEGO Island expects.
+	bool m_clientClearsZ = false;
+	SDL_Rect ToRenderPixels(const D3DRECT& rect) const;
 };
 
 inline static void Direct3DRMSoftware_EnumDevice(LPD3DENUMDEVICESCALLBACK cb, void* ctx)

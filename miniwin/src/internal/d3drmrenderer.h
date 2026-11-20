@@ -120,6 +120,14 @@ public:
 	// Backends that do not implement it leave DrawIndexedPrimitive
 	// unsupported.
 	virtual HRESULT SubmitImmediate(const ImmediateDraw& draw) { return DDERR_UNSUPPORTED; }
+	// The rectangle 3D drawing is projected into and clipped to, in the
+	// game's (virtual) coordinates; nullptr is the whole target. Backends
+	// that ignore it draw every viewport over the whole target.
+	virtual void SetViewportRect(const D3DRECT* rect) {}
+	// Clear a rectangle, in virtual coordinates, of the target (D3DCLEAR_TARGET,
+	// to an ARGB colour) and of the z-buffer (D3DCLEAR_ZBUFFER, to z). The
+	// default clears only the whole target, through Clear.
+	virtual HRESULT ClearRect(const D3DRECT& rect, DWORD flags, D3DCOLOR color, float z);
 	virtual void SetPalette(SDL_Palette* palette) {}
 	virtual bool UsesPalettedSurfaces() const { return false; }
 	// The IDirect3D3 (the DirectDraw object) the device was created from.
