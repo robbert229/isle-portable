@@ -201,6 +201,48 @@ static bool IsTriangleOutsideViewCone(
 	return false;
 }
 
+// Clip a view-space triangle against the near plane z = front and pass the
+// zero, one or two triangles that remain to draw(a, b, c).
+template <typename Draw>
+static void ClipNear(const SWLitVertex (&v)[3], float front, Draw&& draw)
+{
+	bool in0 = v[0].position.z >= front;
+	bool in1 = v[1].position.z >= front;
+	bool in2 = v[2].position.z >= front;
+
+	int insideCount = in0 + in1 + in2;
+	if (insideCount == 3) {
+		draw(v[0], v[1], v[2]);
+	}
+	else if (insideCount == 2) {
+		SWLitVertex split;
+		if (!in0) {
+			split = SplitEdge(v[2], v[0], front);
+			draw(v[1], v[2], split);
+			draw(v[1], split, SplitEdge(v[1], v[0], front));
+		}
+		else if (!in1) {
+			split = SplitEdge(v[0], v[1], front);
+			draw(v[2], v[0], split);
+			draw(v[2], split, SplitEdge(v[2], v[1], front));
+		}
+		else {
+			split = SplitEdge(v[1], v[2], front);
+			draw(v[0], v[1], split);
+			draw(v[0], split, SplitEdge(v[0], v[2], front));
+		}
+	}
+	else if (in0) {
+		draw(v[0], SplitEdge(v[0], v[1], front), SplitEdge(v[0], v[2], front));
+	}
+	else if (in1) {
+		draw(SplitEdge(v[1], v[0], front), v[1], SplitEdge(v[1], v[2], front));
+	}
+	else if (in2) {
+		draw(SplitEdge(v[2], v[0], front), SplitEdge(v[2], v[1], front), v[2]);
+	}
+}
+
 void Direct3DRMSoftwareRenderer::DrawTriangleClipped(const SWLitVertex (&v)[3], const Appearance& appearance)
 {
 	bool in0 = v[0].position.z >= m_front;
@@ -216,36 +258,9 @@ void Direct3DRMSoftwareRenderer::DrawTriangleClipped(const SWLitVertex (&v)[3], 
 		return;
 	}
 
-	if (insideCount == 3) {
-		DrawTriangleProjected(v[0], v[1], v[2], appearance);
-	}
-	else if (insideCount == 2) {
-		SWLitVertex split;
-		if (!in0) {
-			split = SplitEdge(v[2], v[0], m_front);
-			DrawTriangleProjected(v[1], v[2], split, appearance);
-			DrawTriangleProjected(v[1], split, SplitEdge(v[1], v[0], m_front), appearance);
-		}
-		else if (!in1) {
-			split = SplitEdge(v[0], v[1], m_front);
-			DrawTriangleProjected(v[2], v[0], split, appearance);
-			DrawTriangleProjected(v[2], split, SplitEdge(v[2], v[1], m_front), appearance);
-		}
-		else {
-			split = SplitEdge(v[1], v[2], m_front);
-			DrawTriangleProjected(v[0], v[1], split, appearance);
-			DrawTriangleProjected(v[0], split, SplitEdge(v[0], v[2], m_front), appearance);
-		}
-	}
-	else if (in0) {
-		DrawTriangleProjected(v[0], SplitEdge(v[0], v[1], m_front), SplitEdge(v[0], v[2], m_front), appearance);
-	}
-	else if (in1) {
-		DrawTriangleProjected(SplitEdge(v[1], v[0], m_front), v[1], SplitEdge(v[1], v[2], m_front), appearance);
-	}
-	else {
-		DrawTriangleProjected(SplitEdge(v[2], v[0], m_front), SplitEdge(v[2], v[1], m_front), v[2], appearance);
-	}
+	ClipNear(v, m_front, [&](const SWLitVertex& a, const SWLitVertex& b, const SWLitVertex& c) {
+		DrawTriangleProjected(a, b, c, appearance);
+	});
 }
 
 // The render surface and all cached textures are SDL_PIXELFORMAT_RGBA32
@@ -1118,4 +1133,274 @@ void Direct3DRMSoftwareRenderer::Download(SDL_Surface* target)
 	};
 
 	SDL_BlitSurfaceScaled(m_renderedImage, &srcRect, target, nullptr, SDL_SCALEMODE_LINEAR);
+}
+
+// ---- immediate mode ---------------------------------------------------------
+
+void Direct3DRMSoftwareRenderer::DrawImmediateClipped(const SWLitVertex (&v)[3], const ImmediatePixelState& state)
+{
+	if (v[0].position.z < m_front && v[1].position.z < m_front && v[2].position.z < m_front) {
+		return;
+	}
+	if (v[0].position.z > m_back && v[1].position.z > m_back && v[2].position.z > m_back) {
+		return;
+	}
+	if (IsTriangleOutsideViewCone(v[0].position, v[1].position, v[2].position, m_frustumPlanes)) {
+		return;
+	}
+	ClipNear(v, m_front, [&](const SWLitVertex& a, const SWLitVertex& b, const SWLitVertex& c) {
+		DrawImmediateTriangle(a, b, c, state);
+	});
+}
+
+static bool ImmediateDepthTest(DWORD func, float z, float stored)
+{
+	switch (static_cast<D3DCMPFUNC>(func)) {
+	case D3DCMP_NEVER:
+		return false;
+	case D3DCMP_LESS:
+		return z < stored;
+	case D3DCMP_EQUAL:
+		return z == stored;
+	case D3DCMP_LESSEQUAL:
+		return z <= stored;
+	case D3DCMP_GREATER:
+		return z > stored;
+	case D3DCMP_NOTEQUAL:
+		return z != stored;
+	case D3DCMP_GREATEREQUAL:
+		return z >= stored;
+	default:
+		return true;
+	}
+}
+
+// One channel's blend factor, in [0, 1].
+static float ImmediateBlendFactor(DWORD factor, float src, float srcAlpha, float dst, float dstAlpha)
+{
+	switch (static_cast<D3DBLEND>(factor)) {
+	case D3DBLEND_ZERO:
+		return 0.0f;
+	case D3DBLEND_ONE:
+		return 1.0f;
+	case D3DBLEND_SRCCOLOR:
+		return src;
+	case D3DBLEND_INVSRCCOLOR:
+		return 1.0f - src;
+	case D3DBLEND_SRCALPHA:
+		return srcAlpha;
+	case D3DBLEND_INVSRCALPHA:
+		return 1.0f - srcAlpha;
+	case D3DBLEND_DESTALPHA:
+		return dstAlpha;
+	case D3DBLEND_INVDESTALPHA:
+		return 1.0f - dstAlpha;
+	case D3DBLEND_DESTCOLOR:
+		return dst;
+	case D3DBLEND_INVDESTCOLOR:
+		return 1.0f - dst;
+	case D3DBLEND_SRCALPHASAT:
+		return std::min(srcAlpha, 1.0f - dstAlpha);
+	default:
+		return 1.0f;
+	}
+}
+
+// Edge-function rasterizer: samples at integer pixel coordinates, as the
+// retained-mode rasterizer does, with a top-left rule so that pixels on an
+// edge shared by two triangles are drawn once (which matters when blending
+// is additive).
+void Direct3DRMSoftwareRenderer::DrawImmediateTriangle(
+	const SWLitVertex& v0,
+	const SWLitVertex& v1,
+	const SWLitVertex& v2,
+	const ImmediatePixelState& state
+)
+{
+	D3DRMVECTOR4D p[3];
+	ProjectVertex(v0.position, p[0]);
+	ProjectVertex(v1.position, p[1]);
+	ProjectVertex(v2.position, p[2]);
+	const SWLitVertex* lit[3] = {&v0, &v1, &v2};
+
+	float area = (p[1].x - p[0].x) * (p[2].y - p[0].y) - (p[2].x - p[0].x) * (p[1].y - p[0].y);
+	if (area == 0.0f || !std::isfinite(area)) {
+		return;
+	}
+	if (area < 0.0f) {
+		std::swap(p[1], p[2]);
+		std::swap(lit[1], lit[2]);
+		area = -area;
+	}
+
+	int minX = std::max(0, static_cast<int>(std::ceil(std::min({p[0].x, p[1].x, p[2].x}))));
+	int maxX = std::min(m_width - 1, static_cast<int>(std::floor(std::max({p[0].x, p[1].x, p[2].x}))));
+	int minY = std::max(0, static_cast<int>(std::ceil(std::min({p[0].y, p[1].y, p[2].y}))));
+	int maxY = std::min(m_height - 1, static_cast<int>(std::floor(std::max({p[0].y, p[1].y, p[2].y}))));
+	if (minX > maxX || minY > maxY) {
+		return;
+	}
+
+	// Edge k runs from vertex k+1 to k+2 and weighs vertex k.
+	struct Edge {
+		float ax, ay, dx, dy;
+		bool topLeft;
+		float At(float x, float y) const { return dx * (y - ay) - dy * (x - ax); }
+	};
+	Edge edges[3];
+	for (int k = 0; k < 3; ++k) {
+		const D3DRMVECTOR4D& a = p[(k + 1) % 3];
+		const D3DRMVECTOR4D& b = p[(k + 2) % 3];
+		edges[k] = {a.x, a.y, b.x - a.x, b.y - a.y, false};
+		edges[k].topLeft = edges[k].dy < 0.0f || (edges[k].dy == 0.0f && edges[k].dx > 0.0f);
+	}
+
+	float invArea = 1.0f / area;
+	float srcAlpha = lit[0]->color.a / 255.0f;
+	Uint8* pixels = static_cast<Uint8*>(m_renderedImage->pixels);
+	int pitch = m_renderedImage->pitch;
+
+	for (int y = minY; y <= maxY; ++y) {
+		Uint8* row = pixels + y * pitch;
+		float* zRow = &m_zBuffer[y * m_width];
+		for (int x = minX; x <= maxX; ++x) {
+			float w[3];
+			bool inside = true;
+			for (int k = 0; k < 3 && inside; ++k) {
+				float e = edges[k].At(static_cast<float>(x), static_cast<float>(y));
+				inside = e > 0.0f || (e == 0.0f && edges[k].topLeft);
+				w[k] = e * invArea;
+			}
+			if (!inside) {
+				continue;
+			}
+
+			float z = w[0] * p[0].z + w[1] * p[1].z + w[2] * p[2].z;
+			if (state.zEnable && !ImmediateDepthTest(state.zFunc, z, zRow[x])) {
+				continue;
+			}
+
+			float r = (w[0] * lit[0]->color.r + w[1] * lit[1]->color.r + w[2] * lit[2]->color.r) / 255.0f;
+			float g = (w[0] * lit[0]->color.g + w[1] * lit[1]->color.g + w[2] * lit[2]->color.g) / 255.0f;
+			float b = (w[0] * lit[0]->color.b + w[1] * lit[1]->color.b + w[2] * lit[2]->color.b) / 255.0f;
+
+			// The render target stands for the display surface, which has no
+			// alpha channel: destination alpha reads as one and stays opaque.
+			Uint8* px = row + x * 4;
+			if (state.blend) {
+				float dr = px[0] / 255.0f, dg = px[1] / 255.0f, db = px[2] / 255.0f, da = 1.0f;
+				float outR = r * ImmediateBlendFactor(state.srcBlend, r, srcAlpha, dr, da) +
+							 dr * ImmediateBlendFactor(state.destBlend, r, srcAlpha, dr, da);
+				float outG = g * ImmediateBlendFactor(state.srcBlend, g, srcAlpha, dg, da) +
+							 dg * ImmediateBlendFactor(state.destBlend, g, srcAlpha, dg, da);
+				float outB = b * ImmediateBlendFactor(state.srcBlend, b, srcAlpha, db, da) +
+							 db * ImmediateBlendFactor(state.destBlend, b, srcAlpha, db, da);
+				px[0] = static_cast<Uint8>(SWClampChannel(outR * 255.0f + 0.5f));
+				px[1] = static_cast<Uint8>(SWClampChannel(outG * 255.0f + 0.5f));
+				px[2] = static_cast<Uint8>(SWClampChannel(outB * 255.0f + 0.5f));
+				px[3] = 255;
+			}
+			else {
+				px[0] = static_cast<Uint8>(SWClampChannel(r * 255.0f + 0.5f));
+				px[1] = static_cast<Uint8>(SWClampChannel(g * 255.0f + 0.5f));
+				px[2] = static_cast<Uint8>(SWClampChannel(b * 255.0f + 0.5f));
+				px[3] = 255;
+			}
+			if (state.zEnable && state.zWrite) {
+				zRow[x] = z;
+			}
+		}
+	}
+}
+
+// Untextured for now: each vertex is lit with the scene's lights and the
+// current material's diffuse colour and alpha.
+HRESULT Direct3DRMSoftwareRenderer::SubmitImmediate(const ImmediateDraw& draw)
+{
+	if (!m_renderedImage || !m_renderedImage->pixels) {
+		return DDERR_GENERIC;
+	}
+	const ImmediateState& st = *draw.state;
+
+	D3DRMMATRIX4D modelView;
+	MultiplyMatrix(modelView, draw.world, draw.view);
+	memcpy(m_worldMatrix, draw.world, sizeof(D3DRMMATRIX4D));
+	NormalMatrix(m_normalMatrix, draw.world);
+	m_specular = false;
+
+	auto toByte = [](float c) { return static_cast<Uint8>(std::min(255.0f, std::max(0.0f, c * 255.0f + 0.5f))); };
+	Appearance appearance = {};
+	appearance.color = {
+		toByte(draw.material.diffuse.r),
+		toByte(draw.material.diffuse.g),
+		toByte(draw.material.diffuse.b),
+		toByte(draw.material.diffuse.a)
+	};
+	appearance.shininess = draw.material.power;
+	appearance.textureId = NO_TEXTURE_ID;
+	appearance.flat = st.Render(D3DRENDERSTATE_SHADEMODE) == static_cast<DWORD>(D3DSHADE_FLAT);
+
+	ImmediatePixelState pixelState;
+	pixelState.zEnable = st.Render(D3DRENDERSTATE_ZENABLE) != 0;
+	pixelState.zWrite = st.Render(D3DRENDERSTATE_ZWRITEENABLE) != 0;
+	pixelState.zFunc = st.Render(D3DRENDERSTATE_ZFUNC);
+	pixelState.blend = st.Render(D3DRENDERSTATE_ALPHABLENDENABLE) != 0;
+	pixelState.srcBlend = st.Render(D3DRENDERSTATE_SRCBLEND);
+	pixelState.destBlend = st.Render(D3DRENDERSTATE_DESTBLEND);
+	const DWORD cull = st.Render(D3DRENDERSTATE_CULLMODE);
+
+	const DWORD vertexCount = draw.vertexCount;
+	m_transformedPositions.resize(vertexCount);
+	for (DWORD i = 0; i < vertexCount; ++i) {
+		const D3DVERTEX& v = draw.vertices[i];
+		m_transformedPositions[i] = TransformPoint({v.x, v.y, v.z}, modelView);
+	}
+	m_vertexColors.resize(vertexCount);
+	m_vertexSpeculars.resize(vertexCount);
+	m_vertexLit.assign(vertexCount, 0);
+
+	auto lightVertex = [&](WORD i) {
+		if (!m_vertexLit[i]) {
+			m_vertexLit[i] = 1;
+			const D3DVERTEX& v = draw.vertices[i];
+			ApplyLighting({v.x, v.y, v.z}, {v.nx, v.ny, v.nz}, appearance, m_vertexColors[i], m_vertexSpeculars[i]);
+		}
+	};
+
+	for (DWORD t = 0; t + 2 < draw.indexCount; t += 3) {
+		const WORD i0 = draw.indices[t];
+		const WORD i1 = draw.indices[t + 1];
+		const WORD i2 = draw.indices[t + 2];
+		const D3DVECTOR& p0 = m_transformedPositions[i0];
+		const D3DVECTOR& p1 = m_transformedPositions[i1];
+		const D3DVECTOR& p2 = m_transformedPositions[i2];
+
+		// Counter-clockwise on screen is IsBackface's test (D3DCULL_CCW).
+		if (cull == static_cast<DWORD>(D3DCULL_CCW) && IsBackface(p0, p1, p2)) {
+			continue;
+		}
+		if (cull == static_cast<DWORD>(D3DCULL_CW) && IsBackface(p0, p2, p1)) {
+			continue;
+		}
+
+		lightVertex(i0);
+		SDL_Color c0 = m_vertexColors[i0], c1, c2;
+		if (appearance.flat) {
+			c1 = c2 = c0; // flat shading takes the first vertex's colour
+		}
+		else {
+			lightVertex(i1);
+			lightVertex(i2);
+			c1 = m_vertexColors[i1];
+			c2 = m_vertexColors[i2];
+		}
+		const SDL_Color none = {0, 0, 0, 0};
+		SWLitVertex tri[3] = {
+			{p0, {draw.vertices[i0].tu, draw.vertices[i0].tv}, c0, none},
+			{p1, {draw.vertices[i1].tu, draw.vertices[i1].tv}, c1, none},
+			{p2, {draw.vertices[i2].tu, draw.vertices[i2].tv}, c2, none},
+		};
+		DrawImmediateClipped(tri, pixelState);
+	}
+	return DD_OK;
 }

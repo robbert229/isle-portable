@@ -1,3 +1,4 @@
+#include "d3dmaterial_impl.h"
 #include "d3drmrenderer.h"
 #include "miniwin.h"
 #ifdef USE_OPENGL1
@@ -31,8 +32,66 @@
 #include "d3drmrenderer_glide.h"
 #endif
 
+ImmediateState::ImmediateState()
+{
+	SDL_memset(renderState, 0, sizeof(renderState));
+	SDL_memset(lightState, 0, sizeof(lightState));
+	SDL_memset(textureStageState, 0, sizeof(textureStageState));
+
+	// Direct3D's defaults, as a device with a z-buffer reports them.
+	renderState[4] = TRUE;  // TEXTUREPERSPECTIVE
+	renderState[7] = TRUE;  // ZENABLE
+	renderState[8] = 3;     // FILLMODE: SOLID
+	renderState[9] = static_cast<DWORD>(D3DSHADE_GOURAUD);
+	renderState[10] = 0xffff; // LINEPATTERN
+	renderState[14] = TRUE;   // ZWRITEENABLE
+	renderState[16] = TRUE;   // LASTPIXEL
+	renderState[17] = 1;      // TEXTUREMAG: NEAREST
+	renderState[18] = 1;      // TEXTUREMIN: NEAREST
+	renderState[19] = static_cast<DWORD>(D3DBLEND_ONE);
+	renderState[20] = static_cast<DWORD>(D3DBLEND_ZERO);
+	renderState[21] = 4; // TEXTUREMAPBLEND: MODULATE
+	renderState[22] = static_cast<DWORD>(D3DCULL_CCW);
+	renderState[23] = static_cast<DWORD>(D3DCMP_LESSEQUAL);
+	renderState[25] = static_cast<DWORD>(D3DCMP_ALWAYS); // ALPHAFUNC
+	renderState[26] = FALSE;                             // DITHERENABLE
+	renderState[37] = 1;                                 // FOGTABLEDENSITY
+
+	for (DWORD stage = 0; stage < TextureStageCount; ++stage) {
+		DWORD* tss = textureStageState[stage];
+		tss[1] = stage == 0 ? 4 : 1; // COLOROP: MODULATE, or DISABLE
+		tss[2] = 2;                  // COLORARG1: TEXTURE
+		tss[3] = 1;                  // COLORARG2: CURRENT
+		tss[4] = stage == 0 ? 2 : 1; // ALPHAOP: SELECTARG1, or DISABLE
+		tss[5] = 2;                  // ALPHAARG1: TEXTURE
+		tss[6] = 1;                  // ALPHAARG2: CURRENT
+		tss[11] = stage;             // TEXCOORDINDEX
+		tss[12] = 1;                 // ADDRESS: WRAP
+		tss[16] = 1;                 // MAGFILTER: POINT
+		tss[17] = 1;                 // MINFILTER: POINT
+		tss[18] = 1;                 // MIPFILTER: NONE
+	}
+}
+
+Direct3DRMRenderer::Direct3DRMRenderer()
+{
+	for (D3DRMMATRIX4D& m : m_transforms) {
+		IdentityMatrix(m);
+	}
+}
+
 Direct3DRMRenderer::~Direct3DRMRenderer()
 {
+	for (IDirect3DTexture2*& texture : m_textures) {
+		if (texture) {
+			texture->Release();
+			texture = nullptr;
+		}
+	}
+	if (m_currentViewport) {
+		m_currentViewport->Release();
+		m_currentViewport = nullptr;
+	}
 	for (DestroyCallbackContext* ctx : m_destroyCallbacks) {
 		ctx->object->DeleteDestroyCallback(OnObjectDestroyed, ctx);
 		delete ctx;
@@ -84,44 +143,74 @@ HRESULT Direct3DRMRenderer::GetDirect3D(IDirect3D3** d3d)
 
 HRESULT Direct3DRMRenderer::SetCurrentViewport(IDirect3DViewport3* viewport)
 {
-	MINIWIN_NOT_IMPLEMENTED();
-	return DDERR_UNSUPPORTED;
+	if (viewport) {
+		viewport->AddRef();
+	}
+	if (m_currentViewport) {
+		m_currentViewport->Release();
+	}
+	m_currentViewport = viewport;
+	return DD_OK;
 }
 
 HRESULT Direct3DRMRenderer::GetRenderState(D3DRENDERSTATETYPE state, LPDWORD value)
 {
-	MINIWIN_NOT_IMPLEMENTED();
-	return DDERR_UNSUPPORTED;
+	DWORD index = static_cast<DWORD>(state);
+	if (!value || index >= ImmediateState::RenderStateCount) {
+		return DDERR_INVALIDPARAMS;
+	}
+	*value = m_immediateState.renderState[index];
+	return DD_OK;
 }
 
 HRESULT Direct3DRMRenderer::SetRenderState(D3DRENDERSTATETYPE state, DWORD value)
 {
-	MINIWIN_NOT_IMPLEMENTED();
-	return DDERR_UNSUPPORTED;
+	DWORD index = static_cast<DWORD>(state);
+	if (index >= ImmediateState::RenderStateCount) {
+		return DDERR_INVALIDPARAMS;
+	}
+	m_immediateState.renderState[index] = value;
+	return DD_OK;
 }
 
 HRESULT Direct3DRMRenderer::GetLightState(D3DLIGHTSTATETYPE state, LPDWORD value)
 {
-	MINIWIN_NOT_IMPLEMENTED();
-	return DDERR_UNSUPPORTED;
+	DWORD index = static_cast<DWORD>(state);
+	if (!value || index >= ImmediateState::LightStateCount) {
+		return DDERR_INVALIDPARAMS;
+	}
+	*value = m_immediateState.lightState[index];
+	return DD_OK;
 }
 
 HRESULT Direct3DRMRenderer::SetLightState(D3DLIGHTSTATETYPE state, DWORD value)
 {
-	MINIWIN_NOT_IMPLEMENTED();
-	return DDERR_UNSUPPORTED;
+	DWORD index = static_cast<DWORD>(state);
+	if (index >= ImmediateState::LightStateCount) {
+		return DDERR_INVALIDPARAMS;
+	}
+	m_immediateState.lightState[index] = value;
+	return DD_OK;
 }
 
 HRESULT Direct3DRMRenderer::SetTransform(D3DTRANSFORMSTATETYPE state, LPD3DMATRIX matrix)
 {
-	MINIWIN_NOT_IMPLEMENTED();
-	return DDERR_UNSUPPORTED;
+	DWORD index = static_cast<DWORD>(state);
+	if (!matrix || index < 1 || index > 3) {
+		return DDERR_INVALIDPARAMS;
+	}
+	SDL_memcpy(m_transforms[index - 1], matrix, sizeof(D3DRMMATRIX4D));
+	return DD_OK;
 }
 
 HRESULT Direct3DRMRenderer::GetTransform(D3DTRANSFORMSTATETYPE state, LPD3DMATRIX matrix)
 {
-	MINIWIN_NOT_IMPLEMENTED();
-	return DDERR_UNSUPPORTED;
+	DWORD index = static_cast<DWORD>(state);
+	if (!matrix || index < 1 || index > 3) {
+		return DDERR_INVALIDPARAMS;
+	}
+	SDL_memcpy(matrix, m_transforms[index - 1], sizeof(D3DRMMATRIX4D));
+	return DD_OK;
 }
 
 HRESULT Direct3DRMRenderer::DrawIndexedPrimitive(
@@ -134,32 +223,83 @@ HRESULT Direct3DRMRenderer::DrawIndexedPrimitive(
 	DWORD flags
 )
 {
-	MINIWIN_NOT_IMPLEMENTED();
-	return DDERR_UNSUPPORTED;
+	if (primitiveType != D3DPT_TRIANGLELIST || vertexType != D3DFVF_VERTEX) {
+		MINIWIN_NOT_IMPLEMENTED();
+		return DDERR_UNSUPPORTED;
+	}
+	if (!vertices || !indices || indexCount % 3 != 0) {
+		return DDERR_INVALIDPARAMS;
+	}
+	for (DWORD i = 0; i < indexCount; ++i) {
+		if (indices[i] >= vertexCount) {
+			return DDERR_INVALIDPARAMS;
+		}
+	}
+	if (indexCount == 0) {
+		return DD_OK;
+	}
+
+	ImmediateDraw draw = {};
+	draw.vertices = static_cast<const D3DVERTEX*>(vertices);
+	draw.vertexCount = vertexCount;
+	draw.indices = indices;
+	draw.indexCount = indexCount;
+	SDL_memcpy(draw.world, m_transforms[0], sizeof(D3DRMMATRIX4D));
+	SDL_memcpy(draw.view, m_transforms[1], sizeof(D3DRMMATRIX4D));
+	SDL_memcpy(draw.projection, m_transforms[2], sizeof(D3DRMMATRIX4D));
+	draw.state = &m_immediateState;
+	DWORD materialHandle = m_immediateState.lightState[static_cast<DWORD>(D3DLIGHTSTATE_MATERIAL)];
+	if (const D3DMATERIAL* material = Direct3DMaterial_FromHandle(materialHandle)) {
+		draw.material = *material;
+	}
+	return SubmitImmediate(draw);
 }
 
 HRESULT Direct3DRMRenderer::GetTexture(DWORD stage, IDirect3DTexture2** texture)
 {
-	MINIWIN_NOT_IMPLEMENTED();
-	return DDERR_UNSUPPORTED;
+	if (!texture || stage >= ImmediateState::TextureStageCount) {
+		return DDERR_INVALIDPARAMS;
+	}
+	*texture = m_textures[stage];
+	if (*texture) {
+		(*texture)->AddRef();
+	}
+	return DD_OK;
 }
 
 HRESULT Direct3DRMRenderer::SetTexture(DWORD stage, IDirect3DTexture2* texture)
 {
-	MINIWIN_NOT_IMPLEMENTED();
-	return DDERR_UNSUPPORTED;
+	if (stage >= ImmediateState::TextureStageCount) {
+		return DDERR_INVALIDPARAMS;
+	}
+	if (texture) {
+		texture->AddRef();
+	}
+	if (m_textures[stage]) {
+		m_textures[stage]->Release();
+	}
+	m_textures[stage] = texture;
+	return DD_OK;
 }
 
 HRESULT Direct3DRMRenderer::GetTextureStageState(DWORD stage, D3DTEXTURESTAGESTATETYPE state, LPDWORD value)
 {
-	MINIWIN_NOT_IMPLEMENTED();
-	return DDERR_UNSUPPORTED;
+	DWORD index = static_cast<DWORD>(state);
+	if (!value || stage >= ImmediateState::TextureStageCount || index >= ImmediateState::TextureStageStateCount) {
+		return DDERR_INVALIDPARAMS;
+	}
+	*value = m_immediateState.textureStageState[stage][index];
+	return DD_OK;
 }
 
 HRESULT Direct3DRMRenderer::SetTextureStageState(DWORD stage, D3DTEXTURESTAGESTATETYPE state, DWORD value)
 {
-	MINIWIN_NOT_IMPLEMENTED();
-	return DDERR_UNSUPPORTED;
+	DWORD index = static_cast<DWORD>(state);
+	if (stage >= ImmediateState::TextureStageCount || index >= ImmediateState::TextureStageStateCount) {
+		return DDERR_INVALIDPARAMS;
+	}
+	m_immediateState.textureStageState[stage][index] = value;
+	return DD_OK;
 }
 
 void Direct3DRMRenderer::RegisterDestroyCallback(IDirect3DRMObject* object, Uint32 id, DestroyCallback callback)

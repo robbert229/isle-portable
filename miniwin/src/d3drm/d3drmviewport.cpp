@@ -2,6 +2,7 @@
 #include "d3drmframe_impl.h"
 #include "d3drmmesh_impl.h"
 #include "d3drmrenderer.h"
+#include "d3drmuservisual_impl.h"
 #include "d3drmviewport_impl.h"
 #include "d3dviewport_impl.h"
 #include "ddraw_impl.h"
@@ -15,8 +16,13 @@
 #include <functional>
 #include <math.h>
 
-Direct3DRMViewportImpl::Direct3DRMViewportImpl(DWORD width, DWORD height, Direct3DRMRenderer* renderer)
-	: m_virtualWidth(width), m_virtualHeight(height), m_renderer(renderer)
+Direct3DRMViewportImpl::Direct3DRMViewportImpl(
+	DWORD width,
+	DWORD height,
+	Direct3DRMRenderer* renderer,
+	IDirect3DRMDevice* device
+)
+	: m_virtualWidth(width), m_virtualHeight(height), m_renderer(renderer), m_device(device)
 {
 }
 
@@ -58,34 +64,6 @@ static void D3DRMMatrixMultiply(D3DRMMATRIX4D out, const D3DRMMATRIX4D a, const 
 			}
 		}
 	}
-}
-
-static void D3DRMMatrixInvertForNormal(Matrix3x3 out, const D3DRMMATRIX4D m)
-{
-	float a = m[0][0], b = m[0][1], c = m[0][2];
-	float d = m[1][0], e = m[1][1], f = m[1][2];
-	float g = m[2][0], h = m[2][1], i = m[2][2];
-
-	float det = a * (e * i - f * h) - b * (d * i - f * g) + c * (d * h - e * g);
-
-	if (fabs(det) < 1e-6f) {
-		memset(out, 0, sizeof(Matrix3x3));
-		return;
-	}
-
-	float invDet = 1.0f / det;
-
-	out[0][0] = (e * i - f * h) * invDet;
-	out[1][0] = (c * h - b * i) * invDet;
-	out[2][0] = (b * f - c * e) * invDet;
-
-	out[0][1] = (f * g - d * i) * invDet;
-	out[1][1] = (a * i - c * g) * invDet;
-	out[2][1] = (c * d - a * f) * invDet;
-
-	out[0][2] = (d * h - e * g) * invDet;
-	out[1][2] = (b * g - a * h) * invDet;
-	out[2][2] = (a * e - b * d) * invDet;
 }
 
 static void D3DRMMatrixInvertOrthogonal(D3DRMMATRIX4D out, const D3DRMMATRIX4D m)
@@ -261,7 +239,7 @@ void Direct3DRMViewportImpl::CollectMeshesFromFrame(IDirect3DRMFrame* frame, D3D
 	D3DRMMatrixMultiply(worldMatrix, localMatrix, parentMatrix);
 
 	Matrix3x3 worldMatrixInvert;
-	D3DRMMatrixInvertForNormal(worldMatrixInvert, worldMatrix);
+	NormalMatrix(worldMatrixInvert, worldMatrix);
 
 	IDirect3DRMVisualArray* visuals = nullptr;
 	frame->GetVisuals(&visuals);
@@ -322,10 +300,59 @@ void Direct3DRMViewportImpl::CollectMeshesFromFrame(IDirect3DRMFrame* frame, D3D
 				}
 			}
 			mesh->Release();
+			visual->Release();
+			continue;
+		}
+
+		IDirect3DRMUserVisual* userVisual = nullptr;
+		visual->QueryInterface(IID_IDirect3DRMUserVisual, (void**) &userVisual);
+		if (userVisual) {
+			RenderUserVisual(static_cast<Direct3DRMUserVisualImpl*>(userVisual), worldMatrix);
+			userVisual->Release();
 		}
 		visual->Release();
 	}
 	visuals->Release();
+
+	// Child frames (AddChild, or CreateFrame with a parent) render with the
+	// frame, as D3DRM does; a frame used as a visual was walked above.
+	IDirect3DRMFrameArray* children = nullptr;
+	frame->GetChildren(&children);
+	DWORD childCount = children->GetSize();
+	for (DWORD i = 0; i < childCount; ++i) {
+		IDirect3DRMFrame* childFrame = nullptr;
+		children->GetElement(i, &childFrame);
+		CollectMeshesFromFrame(childFrame, worldMatrix);
+		childFrame->Release();
+	}
+	children->Release();
+}
+
+// A user visual draws itself on the immediate-mode device. As D3DRM does,
+// the device's world, view and projection transforms and its current
+// viewport are set before the callback is asked whether the visual can be
+// seen (CANSEE) and then to draw it (RENDER).
+void Direct3DRMViewportImpl::RenderUserVisual(Direct3DRMUserVisualImpl* visual, const D3DRMMATRIX4D worldMatrix)
+{
+	m_renderer->SetTransform(D3DTRANSFORMSTATE_WORLD, (LPD3DMATRIX) worldMatrix);
+	m_renderer->SetTransform(D3DTRANSFORMSTATE_VIEW, (LPD3DMATRIX) m_viewMatrix);
+	m_renderer->SetTransform(D3DTRANSFORMSTATE_PROJECTION, (LPD3DMATRIX) m_projectionMatrix);
+
+	IDirect3DViewport* d3dViewport = nullptr;
+	IDirect3DViewport3* d3dViewport3 = nullptr;
+	if (GetDirect3DViewport(&d3dViewport) == DD_OK) {
+		d3dViewport->QueryInterface(IID_IDirect3DViewport3, (void**) &d3dViewport3);
+		d3dViewport->Release();
+	}
+	m_renderer->SetCurrentViewport(d3dViewport3);
+	if (d3dViewport3) {
+		d3dViewport3->Release();
+	}
+
+	IDirect3DRMViewport* self = static_cast<IDirect3DRMViewport*>(this);
+	if (visual->Invoke(D3DRMUSERVISUAL_CANSEE, m_device, self)) {
+		visual->Invoke(D3DRMUSERVISUAL_RENDER, m_device, self);
+	}
 }
 
 HRESULT Direct3DRMViewportImpl::RenderScene()

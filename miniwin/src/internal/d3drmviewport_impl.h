@@ -20,7 +20,12 @@ class Direct3DRMDeviceImpl;
 class Direct3DRMFrameImpl;
 
 struct Direct3DRMViewportImpl : public Direct3DRMObjectBaseImpl<IDirect3DRMViewport2> {
-	Direct3DRMViewportImpl(DWORD width, DWORD height, Direct3DRMRenderer* renderer);
+	Direct3DRMViewportImpl(
+		DWORD width,
+		DWORD height,
+		Direct3DRMRenderer* renderer,
+		IDirect3DRMDevice* device = nullptr
+	);
 	~Direct3DRMViewportImpl() override;
 	HRESULT QueryInterface(const GUID& riid, void** ppvObject) override;
 	HRESULT Render(IDirect3DRMFrame* group) override;
@@ -60,7 +65,9 @@ private:
 	void CollectLightsFromFrame(IDirect3DRMFrame* frame, D3DRMMATRIX4D parentMatrix, std::vector<SceneLight>& lights);
 	void CollectMeshesFromFrame(IDirect3DRMFrame* frame, D3DRMMATRIX4D parentMatrix);
 	void BuildViewFrustumPlanes();
+	void RenderUserVisual(struct Direct3DRMUserVisualImpl* visual, const D3DRMMATRIX4D worldMatrix);
 	Direct3DRMRenderer* m_renderer;
+	IDirect3DRMDevice* m_device; // the device the viewport was created on; not owned
 	std::vector<DeferredDrawCommand> m_deferredDraws;
 	D3DCOLOR m_backgroundColor = 0xFF000000;
 	DWORD m_virtualWidth;

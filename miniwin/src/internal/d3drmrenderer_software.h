@@ -62,6 +62,7 @@ public:
 	void Download(SDL_Surface* target) override;
 	void SetDither(bool dither) override;
 	void SetPalette(SDL_Palette* palette) override;
+	HRESULT SubmitImmediate(const ImmediateDraw& draw) override;
 
 private:
 	void ClearZBuffer();
@@ -72,6 +73,18 @@ private:
 		const Appearance& appearance
 	);
 	void DrawTriangleClipped(const SWLitVertex (&v)[3], const Appearance& appearance);
+	// Immediate mode: the device's z, blend and cull states per pixel.
+	struct ImmediatePixelState {
+		bool zEnable, zWrite, blend;
+		DWORD zFunc, srcBlend, destBlend;
+	};
+	void DrawImmediateClipped(const SWLitVertex (&v)[3], const ImmediatePixelState& state);
+	void DrawImmediateTriangle(
+		const SWLitVertex& v0,
+		const SWLitVertex& v1,
+		const SWLitVertex& v2,
+		const ImmediatePixelState& state
+	);
 	void ProjectVertex(const D3DVECTOR& v, D3DRMVECTOR4D& p) const;
 	void ApplyLighting(
 		const D3DVECTOR& position,

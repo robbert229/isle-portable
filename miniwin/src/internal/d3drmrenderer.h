@@ -28,8 +28,41 @@ struct Plane {
 	float d;
 };
 
+// The immediate-mode state of the device (IDirect3DDevice2/3): render
+// states, light states and texture stage states, indexed by their Direct3D
+// values. Untouched states hold Direct3D's defaults.
+struct ImmediateState {
+	static constexpr DWORD RenderStateCount = 256;
+	static constexpr DWORD LightStateCount = 16;
+	static constexpr DWORD TextureStageCount = 8;
+	static constexpr DWORD TextureStageStateCount = 32;
+
+	ImmediateState();
+	DWORD Render(D3DRENDERSTATETYPE state) const { return renderState[static_cast<DWORD>(state)]; }
+
+	DWORD renderState[RenderStateCount];
+	DWORD lightState[LightStateCount];
+	DWORD textureStageState[TextureStageCount][TextureStageStateCount];
+};
+
+// One DrawIndexedPrimitive call: a D3DFVF_VERTEX triangle list with the
+// device's transforms, state and current material. The vertices and indices
+// belong to the caller and are only valid during SubmitImmediate.
+struct ImmediateDraw {
+	const D3DVERTEX* vertices;
+	DWORD vertexCount;
+	const WORD* indices;
+	DWORD indexCount;
+	D3DRMMATRIX4D world;
+	D3DRMMATRIX4D view;
+	D3DRMMATRIX4D projection;
+	const ImmediateState* state;
+	D3DMATERIAL material; // all zero when no material is selected
+};
+
 class Direct3DRMRenderer : public IDirect3DDevice3 {
 public:
+	Direct3DRMRenderer();
 	~Direct3DRMRenderer() override;
 	// IUnknown interface
 	HRESULT QueryInterface(const GUID& riid, void** ppvObject) override;
@@ -83,6 +116,10 @@ public:
 	virtual void Draw2DImage(Uint32 textureId, const SDL_Rect& srcRect, const SDL_Rect& dstRect, FColor color) = 0;
 	virtual void Download(SDL_Surface* target) = 0;
 	virtual void SetDither(bool dither) = 0;
+	// Immediate mode: draw one triangle list now, with the device's state.
+	// Backends that do not implement it leave DrawIndexedPrimitive
+	// unsupported.
+	virtual HRESULT SubmitImmediate(const ImmediateDraw& draw) { return DDERR_UNSUPPORTED; }
 	virtual void SetPalette(SDL_Palette* palette) {}
 	virtual bool UsesPalettedSurfaces() const { return false; }
 	// The IDirect3D3 (the DirectDraw object) the device was created from.
@@ -95,6 +132,11 @@ protected:
 	int m_width, m_height;
 	int m_virtualWidth, m_virtualHeight;
 	ViewportTransform m_viewportTransform;
+
+	ImmediateState m_immediateState;
+	D3DRMMATRIX4D m_transforms[3]; // world, view, projection
+	IDirect3DViewport3* m_currentViewport = nullptr;
+	IDirect3DTexture2* m_textures[ImmediateState::TextureStageCount] = {};
 
 private:
 	struct DestroyCallbackContext {
