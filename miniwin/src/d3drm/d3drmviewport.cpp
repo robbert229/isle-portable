@@ -1,5 +1,6 @@
 #include "d3drm_impl.h"
 #include "d3drmframe_impl.h"
+#include "d3drmlight_impl.h"
 #include "d3drmmesh_impl.h"
 #include "d3drmrenderer.h"
 #include "d3drmviewport_impl.h"
@@ -104,11 +105,7 @@ static void ComputeFrameWorldMatrix(IDirect3DRMFrame* frame, D3DRMMATRIX4D out)
 	memcpy(out, acc, sizeof(acc));
 }
 
-void Direct3DRMViewportImpl::CollectLightsFromFrame(
-	IDirect3DRMFrame* frame,
-	D3DRMMATRIX4D parentToWorld,
-	std::vector<SceneLight>& lights
-)
+void Direct3DRMViewportImpl::CollectLightsFromFrame(IDirect3DRMFrame* frame, D3DRMMATRIX4D parentToWorld)
 {
 	auto* frameImpl = static_cast<Direct3DRMFrameImpl*>(frame);
 	// Row vectors, as D3DRM: a point goes through the frame's own transform
@@ -122,14 +119,15 @@ void Direct3DRMViewportImpl::CollectLightsFromFrame(
 	for (DWORD li = 0; li < lightCount; ++li) {
 		IDirect3DRMLight* light = nullptr;
 		lightArray->GetElement(li, &light);
-		D3DCOLOR color = light->GetColor();
+		auto* lightImpl = static_cast<Direct3DRMLightImpl*>(light);
 		SceneLight extracted;
-		extracted.color = {
-			((color >> 0) & 0xFF) / 255.0f,
-			((color >> 8) & 0xFF) / 255.0f,
-			((color >> 16) & 0xFF) / 255.0f,
-			((color >> 24) & 0xFF) / 255.0f
-		};
+		extracted.color = lightImpl->GetColorValue();
+		extracted.range = light->GetRange();
+		extracted.attenuation[0] = light->GetConstantAttenuation();
+		extracted.attenuation[1] = light->GetLinearAttenuation();
+		extracted.attenuation[2] = light->GetQuadraticAttenuation();
+		extracted.umbra = light->GetUmbra();
+		extracted.penumbra = light->GetPenumbra();
 
 		D3DRMLIGHTTYPE type = light->GetType();
 		if (type == D3DRMLIGHT_POINT || type == D3DRMLIGHT_SPOT || type == D3DRMLIGHT_PARALLELPOINT) {
@@ -141,7 +139,8 @@ void Direct3DRMViewportImpl::CollectLightsFromFrame(
 			extracted.directional = 1.f;
 		}
 
-		lights.push_back(extracted);
+		m_lights.push_back(extracted);
+		m_lightEnableFrames.push_back(lightImpl->PeekEnableFrame());
 		light->Release();
 	}
 	lightArray->Release();
@@ -152,7 +151,7 @@ void Direct3DRMViewportImpl::CollectLightsFromFrame(
 	for (DWORD i = 0; i < n; ++i) {
 		IDirect3DRMFrame* childFrame = nullptr;
 		children->GetElement(i, &childFrame);
-		CollectLightsFromFrame(childFrame, worldMatrix, lights);
+		CollectLightsFromFrame(childFrame, worldMatrix);
 		childFrame->Release();
 	}
 	children->Release();
@@ -230,9 +229,34 @@ float CalculateDepth(const D3DRMMATRIX4D& viewProj, const D3DRMMATRIX4D& worldMa
 	return (clipPos.z / clipPos.w + 1.0f) * 0.5f;
 }
 
-void Direct3DRMViewportImpl::CollectMeshesFromFrame(IDirect3DRMFrame* frame, D3DRMMATRIX4D parentMatrix)
+void Direct3DRMViewportImpl::UseLights(uint64_t mask)
+{
+	if (mask == m_pushedLightMask) {
+		return;
+	}
+	m_activeLights.clear();
+	for (size_t i = 0; i < m_lights.size(); ++i) {
+		if (i >= 64 || (mask >> i) & 1) {
+			m_activeLights.push_back(m_lights[i]);
+		}
+	}
+	m_renderer->PushLights(m_activeLights.data(), m_activeLights.size());
+	m_pushedLightMask = mask;
+}
+
+void Direct3DRMViewportImpl::CollectMeshesFromFrame(
+	IDirect3DRMFrame* frame,
+	D3DRMMATRIX4D parentMatrix,
+	uint64_t lightMask
+)
 {
 	Direct3DRMFrameImpl* frameImpl = static_cast<Direct3DRMFrameImpl*>(frame);
+	// A light with an enable frame lights that frame's hierarchy only.
+	for (size_t i = 0; i < m_lightEnableFrames.size() && i < 64; ++i) {
+		if (m_lightEnableFrames[i] && static_cast<Direct3DRMFrameImpl*>(m_lightEnableFrames[i]) == frameImpl) {
+			lightMask |= uint64_t(1) << i;
+		}
+	}
 	D3DRMMATRIX4D localMatrix;
 	memcpy(localMatrix, frameImpl->m_transform, sizeof(D3DRMMATRIX4D));
 
@@ -252,7 +276,7 @@ void Direct3DRMViewportImpl::CollectMeshesFromFrame(IDirect3DRMFrame* frame, D3D
 		IDirect3DRMFrame* childFrame = nullptr;
 		visual->QueryInterface(IID_IDirect3DRMFrame, (void**) &childFrame);
 		if (childFrame) {
-			CollectMeshesFromFrame(childFrame, worldMatrix);
+			CollectMeshesFromFrame(childFrame, worldMatrix, lightMask);
 			childFrame->Release();
 			visual->Release();
 			continue;
@@ -282,13 +306,15 @@ void Direct3DRMViewportImpl::CollectMeshesFromFrame(IDirect3DRMFrame* frame, D3D
 							 {},
 							 {},
 							 appearance,
-							 CalculateDepth(m_viewProjectionwMatrix, worldMatrix)}
+							 CalculateDepth(m_viewProjectionwMatrix, worldMatrix),
+							 lightMask}
 						);
 						memcpy(m_deferredDraws.back().modelViewMatrix, modelViewMatrix, sizeof(D3DRMMATRIX4D));
 						memcpy(m_deferredDraws.back().worldMatrix, worldMatrix, sizeof(D3DRMMATRIX4D));
 						memcpy(m_deferredDraws.back().normalMatrix, worldMatrixInvert, sizeof(Matrix3x3));
 					}
 					else {
+						UseLights(lightMask);
 						m_renderer->SubmitDraw(
 							m_renderer->GetMeshId(mesh, &meshGroup),
 							modelViewMatrix,
@@ -319,9 +345,17 @@ HRESULT Direct3DRMViewportImpl::RenderScene()
 
 	D3DRMMATRIX4D identity = {{1.f, 0.f, 0.f, 0.f}, {0.f, 1.f, 0.f, 0.f}, {0.f, 0.f, 1.f, 0.f}, {0.f, 0.f, 0.f, 1.f}};
 
-	std::vector<SceneLight> lights;
-	CollectLightsFromFrame(m_rootFrame, identity, lights);
-	m_renderer->PushLights(lights.data(), lights.size());
+	m_lights.clear();
+	m_lightEnableFrames.clear();
+	CollectLightsFromFrame(m_rootFrame, identity);
+	uint64_t sceneMask = 0;
+	for (size_t i = 0; i < m_lightEnableFrames.size() && i < 64; ++i) {
+		if (!m_lightEnableFrames[i]) {
+			sceneMask |= uint64_t(1) << i;
+		}
+	}
+	m_pushedLightMask = ~sceneMask; // force the first push
+	UseLights(sceneMask);
 	HRESULT status = m_renderer->BeginFrame();
 	if (status != DD_OK) {
 		return status;
@@ -330,7 +364,7 @@ HRESULT Direct3DRMViewportImpl::RenderScene()
 	BuildViewFrustumPlanes();
 	m_renderer->SetFrustumPlanes(m_frustumPlanes);
 
-	CollectMeshesFromFrame(m_rootFrame, identity);
+	CollectMeshesFromFrame(m_rootFrame, identity, sceneMask);
 
 	std::sort(
 		m_deferredDraws.begin(),
@@ -339,6 +373,7 @@ HRESULT Direct3DRMViewportImpl::RenderScene()
 	);
 	m_renderer->EnableTransparency();
 	for (const DeferredDrawCommand& cmd : m_deferredDraws) {
+		UseLights(cmd.lightMask);
 		m_renderer->SubmitDraw(
 			cmd.meshId,
 			cmd.modelViewMatrix,

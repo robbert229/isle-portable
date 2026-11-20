@@ -18,6 +18,10 @@ struct BridgeSceneLight {
 	float positional;
 	BridgeVector direction;
 	float directional;
+	float range;
+	float attenuation[3];
+	float umbra;
+	float penumbra;
 };
 
 struct BridgeSceneVertex {

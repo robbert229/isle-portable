@@ -103,7 +103,18 @@ void Direct3DRMSoftwareRenderer::PushLights(const SceneLight* lights, size_t cou
 
 		PreparedLight prepared;
 		prepared.color = light.color;
+		prepared.spot = light.positional == 1.0f && light.directional == 1.0f;
+		prepared.range = light.range;
+		for (int a = 0; a < 3; ++a) {
+			prepared.attenuation[a] = light.attenuation[a];
+		}
+		float penumbra = std::max(light.penumbra, light.umbra);
+		prepared.cosUmbra = std::cos(light.umbra);
+		prepared.cosPenumbra = std::cos(penumbra);
 		if (light.directional == 1.0f) {
+			prepared.spotDirection = Normalize(light.direction);
+		}
+		if (light.directional == 1.0f && !prepared.spot) {
 			prepared.positional = false;
 			prepared.vec = Normalize({-light.direction.x, -light.direction.y, -light.direction.z});
 		}
@@ -261,6 +272,34 @@ inline static void BlendRGBA(Uint8* p, int r, int g, int b, int a)
 	p[3] = static_cast<Uint8>(outA > 255 ? 255 : outA);
 }
 
+// D3DRM's range, attenuation and spot cone: a positional light lights
+// nothing beyond its range, falls off as 1 / (a0 + a1 d + a2 d^2), and a
+// spot fades from full strength at its umbra to nothing at its penumbra,
+// both angles measured from its axis.
+float Direct3DRMSoftwareRenderer::LightReach(const PreparedLight& light, const D3DVECTOR& worldPos, D3DVECTOR& toLight)
+	const
+{
+	D3DVECTOR d = {light.vec.x - worldPos.x, light.vec.y - worldPos.y, light.vec.z - worldPos.z};
+	float distance = std::sqrt(DotProduct(d, d));
+	if (distance > light.range) {
+		return 0.0f;
+	}
+	toLight = distance > 0.0f ? D3DVECTOR{d.x / distance, d.y / distance, d.z / distance} : D3DVECTOR{0, 0, 0};
+	float denominator =
+		light.attenuation[0] + light.attenuation[1] * distance + light.attenuation[2] * distance * distance;
+	float reach = denominator > 0.0f ? 1.0f / denominator : 1.0f;
+	if (light.spot) {
+		float rho = -DotProduct(toLight, light.spotDirection);
+		if (rho <= light.cosPenumbra) {
+			return 0.0f;
+		}
+		if (rho < light.cosUmbra) {
+			reach *= (rho - light.cosPenumbra) / (light.cosUmbra - light.cosPenumbra);
+		}
+	}
+	return reach;
+}
+
 void Direct3DRMSoftwareRenderer::ApplyLighting(
 	const D3DVECTOR& position,
 	const D3DVECTOR& oNormal,
@@ -281,18 +320,22 @@ void Direct3DRMSoftwareRenderer::ApplyLighting(
 		const PreparedLight& light = m_preparedLights[i];
 
 		D3DVECTOR lightVec;
+		float reach = 1.0f;
 		if (light.positional) {
 			if (!haveWorldPos) {
 				worldPos = TransformPoint(position, m_worldMatrix);
 				haveWorldPos = true;
 			}
-			lightVec = Normalize({light.vec.x - worldPos.x, light.vec.y - worldPos.y, light.vec.z - worldPos.z});
+			reach = LightReach(light, worldPos, lightVec);
+			if (reach <= 0.0f) {
+				continue;
+			}
 		}
 		else {
 			lightVec = light.vec;
 		}
 
-		float dotNL = DotProduct(normal, lightVec);
+		float dotNL = DotProduct(normal, lightVec) * reach;
 		if (dotNL > 0.0f) {
 			diffuse.r += dotNL * light.color.r;
 			diffuse.g += dotNL * light.color.g;
@@ -301,7 +344,7 @@ void Direct3DRMSoftwareRenderer::ApplyLighting(
 			if (m_specular) {
 				float dotNH = DotProduct(normal, m_halfway[i]);
 				if (dotNH > 0.0f) {
-					float power = std::pow(dotNH, appearance.shininess);
+					float power = reach * std::pow(dotNH, appearance.shininess);
 					spec.r += power * light.color.r;
 					spec.g += power * light.color.g;
 					spec.b += power * light.color.b;

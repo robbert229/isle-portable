@@ -385,7 +385,10 @@ void Direct3DRMSDL3GPURenderer::PushLights(const SceneLight* lights, size_t coun
 		count = 3;
 	}
 	int lightCount = std::min(static_cast<int>(count), 3);
-	memcpy(&m_fragmentShadingData.lights, lights, sizeof(SceneLight) * lightCount);
+	for (int i = 0; i < lightCount; ++i) {
+		const SceneLight& l = lights[i];
+		m_fragmentShadingData.lights[i] = {l.color, l.position, l.positional, l.direction, l.directional};
+	}
 	m_fragmentShadingData.lightCount = lightCount;
 }
 
@@ -921,8 +924,8 @@ void Direct3DRMSDL3GPURenderer::Draw2DImage(
 
 	CreateOrthographicProjection((float) m_width, (float) m_height, m_uniforms.projection);
 
-	SceneLight fullBright = {{1, 1, 1, 1}, {0, 0, 0}, 0, {0, 0, 0}, 0};
-	memcpy(&m_fragmentShadingData.lights, &fullBright, sizeof(SceneLight));
+	ShaderLight fullBright = {{1, 1, 1, 1}, {0, 0, 0}, 0, {0, 0, 0}, 0};
+	memcpy(&m_fragmentShadingData.lights, &fullBright, sizeof(ShaderLight));
 	m_fragmentShadingData.lightCount = 1;
 	m_fragmentShadingData.color.r = static_cast<Uint8>(color.r * 255);
 	m_fragmentShadingData.color.g = static_cast<Uint8>(color.g * 255);

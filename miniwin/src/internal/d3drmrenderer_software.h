@@ -86,10 +86,19 @@ private:
 	// Per-frame light data prepared once in PushLights so the per-vertex
 	// lighting loop does no normalization.
 	struct PreparedLight {
-		D3DVECTOR vec; // normalized direction to light (directional) or position (positional)
+		D3DVECTOR vec;           // normalized direction to light (directional) or position (positional)
+		D3DVECTOR spotDirection; // unit direction the spot shines in
 		FColor color;
 		bool positional;
+		bool spot;
+		float range;
+		float attenuation[3];
+		float cosUmbra;    // inside it the spot is at full strength
+		float cosPenumbra; // outside it the spot lights nothing
 	};
+	// How much of a positional light reaches worldPos (range, attenuation
+	// and spot cone), and the unit vector from worldPos toward the light.
+	float LightReach(const PreparedLight& light, const D3DVECTOR& worldPos, D3DVECTOR& toLight) const;
 
 	D3DLightingModel m_lightingModel;
 

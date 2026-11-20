@@ -14,14 +14,23 @@
 
 static_assert(sizeof(D3DRMVERTEX) == 32);
 
+// A light in world space. A spot light is both positional and directional.
+// The first 48 bytes are the shading layout the GPU backends upload; the
+// rest are D3DRM's range, attenuation and spot cone, with D3DRM's defaults.
 struct SceneLight {
 	FColor color;
 	D3DVECTOR position;
 	float positional = 0.f; // position is valid if 1.f
 	D3DVECTOR direction;
 	float directional = 0.f; // direction is valid if 1.f
+	float range = 256.f;     // positional lights light nothing beyond it
+	float attenuation[3] = {1.f, 0.f, 0.f}; // 1 / (a0 + a1 d + a2 d^2)
+	// The spot's cones, as angles in radians from its axis: full strength
+	// inside the umbra, falling off to nothing at the penumbra.
+	float umbra = 0.4f;
+	float penumbra = 0.5f;
 };
-static_assert(sizeof(SceneLight) == 48);
+static_assert(sizeof(SceneLight) == 72);
 
 struct Plane {
 	D3DVECTOR normal;

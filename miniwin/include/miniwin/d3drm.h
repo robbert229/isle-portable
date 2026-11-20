@@ -211,10 +211,26 @@ struct IDirect3DRMMesh : public IDirect3DRMVisual {
 	virtual HRESULT GetVertices(D3DRMGROUPINDEX groupIndex, int startIndex, int count, D3DRMVERTEX* vertices) = 0;
 };
 
+struct IDirect3DRMFrame;
 struct IDirect3DRMLight : public IDirect3DRMObject {
+	virtual HRESULT SetColor(D3DCOLOR color) = 0;
 	virtual HRESULT SetColorRGB(float r, float g, float b) = 0;
+	virtual HRESULT SetRange(D3DVALUE range) = 0;
+	virtual HRESULT SetUmbra(D3DVALUE angle) = 0;
+	virtual HRESULT SetPenumbra(D3DVALUE angle) = 0;
+	virtual HRESULT SetConstantAttenuation(D3DVALUE attenuation) = 0;
+	virtual HRESULT SetLinearAttenuation(D3DVALUE attenuation) = 0;
+	virtual HRESULT SetQuadraticAttenuation(D3DVALUE attenuation) = 0;
+	virtual HRESULT SetEnableFrame(IDirect3DRMFrame* frame) = 0;
 	virtual D3DRMLIGHTTYPE GetType() = 0;
 	virtual D3DCOLOR GetColor() = 0;
+	virtual D3DVALUE GetRange() = 0;
+	virtual D3DVALUE GetUmbra() = 0;
+	virtual D3DVALUE GetPenumbra() = 0;
+	virtual D3DVALUE GetConstantAttenuation() = 0;
+	virtual D3DVALUE GetLinearAttenuation() = 0;
+	virtual D3DVALUE GetQuadraticAttenuation() = 0;
+	virtual HRESULT GetEnableFrame(IDirect3DRMFrame** frame) = 0;
 };
 
 struct IDirect3DRMArray : public IUnknown {
