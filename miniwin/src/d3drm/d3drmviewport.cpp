@@ -158,16 +158,16 @@ void Direct3DRMViewportImpl::CollectLightsFromFrame(
 
 void Direct3DRMViewportImpl::BuildViewFrustumPlanes()
 {
-
-	float aspect = (float) m_renderer->GetWidth() / (float) m_renderer->GetHeight();
-	float tanFovX = m_field;
-	float tanFovY = m_field / aspect;
+	// The projection's scales: a view-space point is inside the left plane
+	// when scaleX * x / z >= -1, that is when scaleX * x + z >= 0.
+	float scaleX = m_projectionMatrix[0][0];
+	float scaleY = m_projectionMatrix[1][1];
 
 	// View-space frustum planes
-	m_frustumPlanes[0] = {Normalize({tanFovX, 0.0f, 1.0f}), 0.0f};  // Left
-	m_frustumPlanes[1] = {Normalize({-tanFovX, 0.0f, 1.0f}), 0.0f}; // Right
-	m_frustumPlanes[2] = {Normalize({0.0f, -tanFovY, 1.0f}), 0.0f}; // Top
-	m_frustumPlanes[3] = {Normalize({0.0f, tanFovY, 1.0f}), 0.0f};  // Bottom
+	m_frustumPlanes[0] = {Normalize({scaleX, 0.0f, 1.0f}), 0.0f};  // Left
+	m_frustumPlanes[1] = {Normalize({-scaleX, 0.0f, 1.0f}), 0.0f}; // Right
+	m_frustumPlanes[2] = {Normalize({0.0f, -scaleY, 1.0f}), 0.0f}; // Top
+	m_frustumPlanes[3] = {Normalize({0.0f, scaleY, 1.0f}), 0.0f};  // Bottom
 
 	// Near and far planes
 	m_frustumPlanes[4] = {{0.0f, 0.0f, 1.0f}, -m_front}; // Near (Z >= m_front)
