@@ -100,14 +100,21 @@ D3DRMIMAGE* Direct3DRMTextureImpl::GetImage()
 
 HRESULT Direct3DRMTextureImpl::SetDecalTransparency(BOOL transparency)
 {
-	MINIWIN_NOT_IMPLEMENTED();
-	return E_NOTIMPL;
+	if (m_decalTransparency != (transparency != FALSE)) {
+		m_decalTransparency = transparency != FALSE;
+		m_version++;
+	}
+	return DD_OK;
 }
 
 HRESULT Direct3DRMTextureImpl::SetDecalTransparentColor(D3DCOLOR color)
 {
-	MINIWIN_NOT_IMPLEMENTED();
-	return E_NOTIMPL;
+	color &= 0x00ffffff;
+	if (m_decalTransparentColor != color) {
+		m_decalTransparentColor = color;
+		m_version++;
+	}
+	return DD_OK;
 }
 
 HRESULT Direct3DRMTextureImpl::GenerateMIPMap(DWORD flags)

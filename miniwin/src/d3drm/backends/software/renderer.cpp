@@ -773,10 +773,39 @@ void Direct3DRMSoftwareRenderer::AddTextureDestroyCallback(Uint32 id, IDirect3DR
 	});
 }
 
+// The texture in the render format. A colour key on the surface becomes
+// alpha 0 (SDL does this when converting), and so does decal transparency's
+// colour.
+SDL_Surface* Direct3DRMSoftwareRenderer::ConvertTexture(Direct3DRMTextureImpl* texture, bool& keyed) const
+{
+	auto surface = static_cast<DirectDrawSurfaceImpl*>(texture->m_surface);
+	SDL_Surface* converted = SDL_ConvertSurface(surface->m_surface, m_renderedImage->format);
+	if (!converted) {
+		keyed = false;
+		return nullptr;
+	}
+	keyed = SDL_SurfaceHasColorKey(surface->m_surface);
+	if (texture->m_decalTransparency) {
+		keyed = true;
+		const Uint8 r = (texture->m_decalTransparentColor >> 16) & 0xff;
+		const Uint8 g = (texture->m_decalTransparentColor >> 8) & 0xff;
+		const Uint8 b = texture->m_decalTransparentColor & 0xff;
+		for (int y = 0; y < converted->h; ++y) {
+			Uint8* px = static_cast<Uint8*>(converted->pixels) + y * converted->pitch;
+			for (int x = 0; x < converted->w; ++x, px += 4) {
+				if (px[0] == r && px[1] == g && px[2] == b) {
+					px[3] = 0;
+				}
+			}
+		}
+	}
+	SDL_LockSurface(converted);
+	return converted;
+}
+
 Uint32 Direct3DRMSoftwareRenderer::GetTextureId(IDirect3DRMTexture* iTexture, bool isUI, float scaleX, float scaleY)
 {
 	auto texture = static_cast<Direct3DRMTextureImpl*>(iTexture);
-	auto surface = static_cast<DirectDrawSurfaceImpl*>(texture->m_surface);
 
 	// Check if already mapped
 	for (Uint32 i = 0; i < m_textures.size(); ++i) {
@@ -785,29 +814,28 @@ Uint32 Direct3DRMSoftwareRenderer::GetTextureId(IDirect3DRMTexture* iTexture, bo
 			if (texRef.version != texture->m_version) {
 				// Update animated textures
 				SDL_DestroySurface(texRef.cached);
-				texRef.cached = SDL_ConvertSurface(surface->m_surface, m_renderedImage->format);
-				SDL_LockSurface(texRef.cached);
+				texRef.cached = ConvertTexture(texture, texRef.keyed);
 				texRef.version = texture->m_version;
 			}
 			return i;
 		}
 	}
 
-	SDL_Surface* convertedRender = SDL_ConvertSurface(surface->m_surface, m_renderedImage->format);
-	SDL_LockSurface(convertedRender);
+	bool keyed = false;
+	SDL_Surface* convertedRender = ConvertTexture(texture, keyed);
 
 	// Reuse freed slot
 	for (Uint32 i = 0; i < m_textures.size(); ++i) {
 		auto& texRef = m_textures[i];
 		if (!texRef.texture) {
-			texRef = {texture, texture->m_version, convertedRender};
+			texRef = {texture, texture->m_version, convertedRender, keyed};
 			AddTextureDestroyCallback(i, texture);
 			return i;
 		}
 	}
 
 	// Append new
-	m_textures.push_back({texture, texture->m_version, convertedRender});
+	m_textures.push_back({texture, texture->m_version, convertedRender, keyed});
 	AddTextureDestroyCallback(static_cast<Uint32>(m_textures.size() - 1), texture);
 	return static_cast<Uint32>(m_textures.size() - 1);
 }
@@ -1209,6 +1237,120 @@ static float ImmediateBlendFactor(DWORD factor, float src, float srcAlpha, float
 	}
 }
 
+struct ImmediateTexel {
+	float r, g, b, a;
+	bool discard;
+};
+
+// Stage 0's texel at (u, v), wrapped. A keyed texture's alpha-0 texels are
+// the colour key: with COLORKEYENABLE they are not drawn (and do not bleed
+// into a filtered neighbour), and the texels that are drawn are opaque.
+template <typename State>
+static ImmediateTexel SampleImmediateTexture(const State& state, float u, float v)
+{
+	auto texel = [&](int x, int y) {
+		x %= state.texWidth;
+		y %= state.texHeight;
+		x += x < 0 ? state.texWidth : 0;
+		y += y < 0 ? state.texHeight : 0;
+		return state.texels + y * state.texPitch + x * 4;
+	};
+	float fx = u * state.texWidth;
+	float fy = v * state.texHeight;
+	ImmediateTexel out = {};
+	if (!state.linear) {
+		const Uint8* t = texel(static_cast<int>(std::floor(fx)), static_cast<int>(std::floor(fy)));
+		out = {t[0] / 255.0f, t[1] / 255.0f, t[2] / 255.0f, t[3] / 255.0f, false};
+		if (state.keyed) {
+			out.discard = state.colorKeyEnable && t[3] == 0;
+			out.a = 1.0f;
+		}
+		return out;
+	}
+
+	fx -= 0.5f;
+	fy -= 0.5f;
+	const float x0 = std::floor(fx), y0 = std::floor(fy);
+	const float ax = fx - x0, ay = fy - y0;
+	const int ix = static_cast<int>(x0), iy = static_cast<int>(y0);
+	const Uint8* t[4] = {texel(ix, iy), texel(ix + 1, iy), texel(ix, iy + 1), texel(ix + 1, iy + 1)};
+	const float w[4] = {(1 - ax) * (1 - ay), ax * (1 - ay), (1 - ax) * ay, ax * ay};
+	const bool keyOut = state.keyed && state.colorKeyEnable;
+	float coverage = 0.0f;
+	for (int i = 0; i < 4; ++i) {
+		float wi = w[i];
+		if (keyOut) {
+			wi *= t[i][3] / 255.0f;
+		}
+		out.r += wi * t[i][0];
+		out.g += wi * t[i][1];
+		out.b += wi * t[i][2];
+		out.a += w[i] * t[i][3];
+		coverage += wi;
+	}
+	if (keyOut) {
+		if (coverage < 0.5f) {
+			out.discard = true;
+			return out;
+		}
+		const float scale = 1.0f / (coverage * 255.0f);
+		out.r *= scale;
+		out.g *= scale;
+		out.b *= scale;
+		out.a = 1.0f;
+		return out;
+	}
+	out.r /= 255.0f;
+	out.g /= 255.0f;
+	out.b /= 255.0f;
+	out.a = state.keyed ? 1.0f : out.a / 255.0f;
+	return out;
+}
+
+// A texture stage argument. Stage 0's CURRENT is the diffuse colour.
+static float ImmediateStageArg(DWORD arg, float diffuse, float texture, float diffuseAlpha, float textureAlpha)
+{
+	float value;
+	const bool alpha = (arg & D3DTA_ALPHAREPLICATE) != 0;
+	switch (arg & D3DTA_SELECTMASK) {
+	case D3DTA_TEXTURE:
+		value = alpha ? textureAlpha : texture;
+		break;
+	case D3DTA_TFACTOR:
+		value = 1.0f;
+		break;
+	case D3DTA_SPECULAR:
+		value = 0.0f;
+		break;
+	default: // DIFFUSE, CURRENT
+		value = alpha ? diffuseAlpha : diffuse;
+		break;
+	}
+	return (arg & D3DTA_COMPLEMENT) ? 1.0f - value : value;
+}
+
+static float ImmediateStageOp(DWORD op, float arg1, float arg2, float current)
+{
+	switch (static_cast<D3DTEXTUREOP>(op)) {
+	case D3DTOP_DISABLE:
+		return current;
+	case D3DTOP_SELECTARG1:
+		return arg1;
+	case D3DTOP_SELECTARG2:
+		return arg2;
+	case D3DTOP_MODULATE:
+		return arg1 * arg2;
+	case D3DTOP_MODULATE2X:
+		return std::min(1.0f, 2.0f * arg1 * arg2);
+	case D3DTOP_MODULATE4X:
+		return std::min(1.0f, 4.0f * arg1 * arg2);
+	case D3DTOP_ADD:
+		return std::min(1.0f, arg1 + arg2);
+	default:
+		return arg1 * arg2;
+	}
+}
+
 // Edge-function rasterizer: samples at integer pixel coordinates, as the
 // retained-mode rasterizer does, with a top-left rule so that pixels on an
 // edge shared by two triangles are drawn once (which matters when blending
@@ -1259,7 +1401,13 @@ void Direct3DRMSoftwareRenderer::DrawImmediateTriangle(
 	}
 
 	float invArea = 1.0f / area;
-	float srcAlpha = lit[0]->color.a / 255.0f;
+	const float diffuseAlpha = lit[0]->color.a / 255.0f;
+	float oneOverW[3], uOverW[3], vOverW[3];
+	for (int k = 0; k < 3; ++k) {
+		oneOverW[k] = 1.0f / p[k].w;
+		uOverW[k] = lit[k]->texCoord.u * oneOverW[k];
+		vOverW[k] = lit[k]->texCoord.v * oneOverW[k];
+	}
 	Uint8* pixels = static_cast<Uint8*>(m_renderedImage->pixels);
 	int pitch = m_renderedImage->pitch;
 
@@ -1286,6 +1434,30 @@ void Direct3DRMSoftwareRenderer::DrawImmediateTriangle(
 			float r = (w[0] * lit[0]->color.r + w[1] * lit[1]->color.r + w[2] * lit[2]->color.r) / 255.0f;
 			float g = (w[0] * lit[0]->color.g + w[1] * lit[1]->color.g + w[2] * lit[2]->color.g) / 255.0f;
 			float b = (w[0] * lit[0]->color.b + w[1] * lit[1]->color.b + w[2] * lit[2]->color.b) / 255.0f;
+			float srcAlpha = diffuseAlpha;
+
+			if (state.texels) {
+				// Perspective-correct texture coordinates.
+				float oow = w[0] * oneOverW[0] + w[1] * oneOverW[1] + w[2] * oneOverW[2];
+				float u = (w[0] * uOverW[0] + w[1] * uOverW[1] + w[2] * uOverW[2]) / oow;
+				float v = (w[0] * vOverW[0] + w[1] * vOverW[1] + w[2] * vOverW[2]) / oow;
+				ImmediateTexel t = SampleImmediateTexture(state, u, v);
+				if (t.discard) {
+					continue;
+				}
+				auto stage = [&](DWORD op, DWORD arg1, DWORD arg2, float diffuse, float texture) {
+					return ImmediateStageOp(
+						op,
+						ImmediateStageArg(arg1, diffuse, texture, diffuseAlpha, t.a),
+						ImmediateStageArg(arg2, diffuse, texture, diffuseAlpha, t.a),
+						diffuse
+					);
+				};
+				r = stage(state.colorOp, state.colorArg1, state.colorArg2, r, t.r);
+				g = stage(state.colorOp, state.colorArg1, state.colorArg2, g, t.g);
+				b = stage(state.colorOp, state.colorArg1, state.colorArg2, b, t.b);
+				srcAlpha = stage(state.alphaOp, state.alphaArg1, state.alphaArg2, diffuseAlpha, t.a);
+			}
 
 			// The render target stands for the display surface, which has no
 			// alpha channel: destination alpha reads as one and stays opaque.
@@ -1316,8 +1488,9 @@ void Direct3DRMSoftwareRenderer::DrawImmediateTriangle(
 	}
 }
 
-// Untextured for now: each vertex is lit with the scene's lights and the
-// current material's diffuse colour and alpha.
+// Each vertex is lit with the scene's lights and the current material's
+// diffuse colour and alpha; texture stage 0 then combines that with the
+// texture.
 HRESULT Direct3DRMSoftwareRenderer::SubmitImmediate(const ImmediateDraw& draw)
 {
 	if (!m_renderedImage || !m_renderedImage->pixels) {
@@ -1350,6 +1523,28 @@ HRESULT Direct3DRMSoftwareRenderer::SubmitImmediate(const ImmediateDraw& draw)
 	pixelState.blend = st.Render(D3DRENDERSTATE_ALPHABLENDENABLE) != 0;
 	pixelState.srcBlend = st.Render(D3DRENDERSTATE_SRCBLEND);
 	pixelState.destBlend = st.Render(D3DRENDERSTATE_DESTBLEND);
+	pixelState.texels = nullptr;
+	if (draw.texture) {
+		Uint32 textureId = GetTextureId(draw.texture, false, 1.0f, 1.0f);
+		const TextureCache& cache = m_textures[textureId];
+		if (cache.cached && st.textureStageState[0][static_cast<DWORD>(D3DTSS_COLOROP)] !=
+								static_cast<DWORD>(D3DTOP_DISABLE)) {
+			pixelState.texels = static_cast<const Uint8*>(cache.cached->pixels);
+			pixelState.texWidth = cache.cached->w;
+			pixelState.texHeight = cache.cached->h;
+			pixelState.texPitch = cache.cached->pitch;
+			pixelState.keyed = cache.keyed;
+		}
+	}
+	pixelState.colorKeyEnable = st.Render(D3DRENDERSTATE_COLORKEYENABLE) != 0;
+	pixelState.linear = st.Render(D3DRENDERSTATE_TEXTUREMAG) != static_cast<DWORD>(D3DFILTER_NEAREST);
+	const DWORD* tss = st.textureStageState[0];
+	pixelState.colorOp = tss[static_cast<DWORD>(D3DTSS_COLOROP)];
+	pixelState.colorArg1 = tss[static_cast<DWORD>(D3DTSS_COLORARG1)];
+	pixelState.colorArg2 = tss[static_cast<DWORD>(D3DTSS_COLORARG2)];
+	pixelState.alphaOp = tss[static_cast<DWORD>(D3DTSS_ALPHAOP)];
+	pixelState.alphaArg1 = tss[static_cast<DWORD>(D3DTSS_ALPHAARG1)];
+	pixelState.alphaArg2 = tss[static_cast<DWORD>(D3DTSS_ALPHAARG2)];
 	const DWORD cull = st.Render(D3DRENDERSTATE_CULLMODE);
 
 	const DWORD vertexCount = draw.vertexCount;

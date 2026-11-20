@@ -52,10 +52,14 @@ struct DirectDrawSurfaceImpl : public IDirectDrawSurface4, public IDirect3DTextu
 	HRESULT GetHandle(IDirect3DDevice2* device, LPD3DTEXTUREHANDLE handle) override;
 
 	IDirect3DRMTexture2* ToTexture();
+	// The surface a texture handle names, or nullptr. Handles are small
+	// integers rather than pointers, since a D3DTEXTUREHANDLE is 32-bit.
+	static DirectDrawSurfaceImpl* FromTextureHandle(D3DTEXTUREHANDLE handle);
 
 	SDL_Surface* m_surface = nullptr;
 
 private:
+	D3DTEXTUREHANDLE m_handle = 0;
 	IDirect3DRMTexture2* m_texture = nullptr;
 	IDirectDrawPalette* m_palette = nullptr;
 };

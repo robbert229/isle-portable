@@ -3,6 +3,7 @@
 #include "d3drm_impl.h"
 #include "d3drmviewport_impl.h"
 #include "d3dviewport_impl.h"
+#include "ddsurface_impl.h"
 #include "miniwin.h"
 #ifdef USE_OPENGL1
 #include "d3drmrenderer_opengl1.h"
@@ -274,6 +275,11 @@ HRESULT Direct3DRMRenderer::DrawIndexedPrimitive(
 	if (const D3DMATERIAL* material = Direct3DMaterial_FromHandle(materialHandle)) {
 		draw.material = *material;
 	}
+	DirectDrawSurfaceImpl* surface = static_cast<DirectDrawSurfaceImpl*>(m_textures[0]);
+	if (!surface) {
+		surface = DirectDrawSurfaceImpl::FromTextureHandle(m_immediateState.Render(D3DRENDERSTATE_TEXTUREHANDLE));
+	}
+	draw.texture = surface ? surface->ToTexture() : nullptr;
 	return SubmitImmediate(draw);
 }
 

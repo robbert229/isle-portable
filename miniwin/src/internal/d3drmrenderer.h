@@ -58,6 +58,9 @@ struct ImmediateDraw {
 	D3DRMMATRIX4D projection;
 	const ImmediateState* state;
 	D3DMATERIAL material; // all zero when no material is selected
+	// Stage 0's texture, from SetTexture or else the TEXTUREHANDLE render
+	// state, or nullptr. A backend maps it with GetTextureId.
+	IDirect3DRMTexture* texture;
 };
 
 class Direct3DRMRenderer : public IDirect3DDevice3 {

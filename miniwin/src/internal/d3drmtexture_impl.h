@@ -17,4 +17,7 @@ struct Direct3DRMTextureImpl : public Direct3DRMObjectBaseImpl<IDirect3DRMTextur
 	IDirectDrawSurface* m_surface = nullptr;
 	Uint8 m_version = 0;
 	bool m_holdsRef;
+	// Decal transparency: texels of this RGB colour are not drawn.
+	bool m_decalTransparency = false;
+	D3DCOLOR m_decalTransparentColor = 0;
 };

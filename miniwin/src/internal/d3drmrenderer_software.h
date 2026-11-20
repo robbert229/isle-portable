@@ -14,6 +14,9 @@ struct TextureCache {
 	Direct3DRMTextureImpl* texture;
 	Uint8 version;
 	SDL_Surface* cached;
+	// Alpha-0 texels stand for a colour key or decal colour rather than
+	// for real alpha.
+	bool keyed;
 };
 
 struct MeshCache {
@@ -79,6 +82,12 @@ private:
 	struct ImmediatePixelState {
 		bool zEnable, zWrite, blend;
 		DWORD zFunc, srcBlend, destBlend;
+		// Stage 0. texels is nullptr when untextured, and the stage then
+		// passes the diffuse colour through.
+		const Uint8* texels;
+		int texWidth, texHeight, texPitch;
+		bool keyed, colorKeyEnable, linear;
+		DWORD colorOp, colorArg1, colorArg2, alphaOp, alphaArg1, alphaArg2;
 	};
 	void DrawImmediateClipped(const SWLitVertex (&v)[3], const ImmediatePixelState& state);
 	void DrawImmediateTriangle(
@@ -96,6 +105,7 @@ private:
 		SDL_Color& specular
 	);
 	void AddTextureDestroyCallback(Uint32 id, IDirect3DRMTexture* texture);
+	SDL_Surface* ConvertTexture(Direct3DRMTextureImpl* texture, bool& keyed) const;
 	void AddMeshDestroyCallback(Uint32 id, IDirect3DRMMesh* mesh);
 
 	// Per-frame light data prepared once in PushLights so the per-vertex

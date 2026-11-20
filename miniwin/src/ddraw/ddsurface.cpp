@@ -6,6 +6,13 @@
 #include "miniwin.h"
 
 #include <assert.h>
+#include <unordered_map>
+
+static std::unordered_map<D3DTEXTUREHANDLE, DirectDrawSurfaceImpl*>& TextureHandles()
+{
+	static std::unordered_map<D3DTEXTUREHANDLE, DirectDrawSurfaceImpl*> handles;
+	return handles;
+}
 
 DirectDrawSurfaceImpl::DirectDrawSurfaceImpl(int width, int height, SDL_PixelFormat format)
 {
@@ -17,6 +24,9 @@ DirectDrawSurfaceImpl::DirectDrawSurfaceImpl(int width, int height, SDL_PixelFor
 
 DirectDrawSurfaceImpl::~DirectDrawSurfaceImpl()
 {
+	if (m_handle) {
+		TextureHandles().erase(m_handle);
+	}
 	SDL_DestroySurface(m_surface);
 	if (m_palette) {
 		m_palette->Release();
@@ -372,10 +382,28 @@ HRESULT DirectDrawSurfaceImpl::Unlock(LPRECT lpRect)
 }
 
 // IDirect3DTexture2 interface
+// The handle is the same for every device: there is only one renderer.
 HRESULT DirectDrawSurfaceImpl::GetHandle(IDirect3DDevice2* device, LPD3DTEXTUREHANDLE handle)
 {
-	MINIWIN_NOT_IMPLEMENTED();
-	return DDERR_UNSUPPORTED;
+	if (!handle) {
+		return DDERR_INVALIDPARAMS;
+	}
+	if (!m_handle) {
+		static D3DTEXTUREHANDLE next = 0;
+		do {
+			++next;
+		} while (next == 0 || TextureHandles().count(next));
+		m_handle = next;
+		TextureHandles()[m_handle] = this;
+	}
+	*handle = m_handle;
+	return DD_OK;
+}
+
+DirectDrawSurfaceImpl* DirectDrawSurfaceImpl::FromTextureHandle(D3DTEXTUREHANDLE handle)
+{
+	auto it = TextureHandles().find(handle);
+	return it == TextureHandles().end() ? nullptr : it->second;
 }
 
 IDirect3DRMTexture2* DirectDrawSurfaceImpl::ToTexture()

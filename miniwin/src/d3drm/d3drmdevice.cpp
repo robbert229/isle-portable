@@ -248,6 +248,27 @@ HRESULT Direct3DRMDevice2Impl::FindPreferredTextureFormat(
 	LPDDPIXELFORMAT pixelFormat
 )
 {
-	MINIWIN_NOT_IMPLEMENTED();
-	return E_NOTIMPL;
+	if (!pixelFormat) {
+		return DDERR_INVALIDPARAMS;
+	}
+	// 8-bit palettized textures when the caller asks for them, which keeps
+	// a colour key a palette index; otherwise RGB 565.
+	DDPIXELFORMAT format = {};
+	format.dwSize = sizeof(format);
+	if ((bitDepths & DDBD_8) == DDBD_8 && (flags & D3DRMFPTF_PALETTIZED)) {
+		format.dwFlags = DDPF_RGB | DDPF_PALETTEINDEXED8;
+		format.dwRGBBitCount = 8;
+	}
+	else if ((bitDepths & DDBD_16) == DDBD_16) {
+		format.dwFlags = DDPF_RGB;
+		format.dwRGBBitCount = 16;
+		format.dwRBitMask = 0xf800;
+		format.dwGBitMask = 0x07e0;
+		format.dwBBitMask = 0x001f;
+	}
+	else {
+		return DDERR_INVALIDPIXELFORMAT;
+	}
+	*pixelFormat = format;
+	return DD_OK;
 }
