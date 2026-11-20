@@ -468,14 +468,6 @@ void Direct3DRMViewportImpl::UpdateProjectionMatrix()
 	memcpy(m_projectionMatrix, projection, sizeof(D3DRMMATRIX4D));
 
 	m_renderer->SetProjection(projection, m_front, m_back);
-
-	D3DRMMATRIX4D inverseProjectionMatrix = {
-		{1.0f / f_h, 0, 0, 0},
-		{0, 1.0f / f_v, 0, 0},
-		{0, 0, 0, depth / (-m_front * m_back)},
-		{0, 0, 1, -(m_back / depth) * depth / (-m_front * m_back)},
-	};
-	memcpy(m_inverseProjectionMatrix, inverseProjectionMatrix, sizeof(D3DRMMATRIX4D));
 }
 
 D3DVALUE Direct3DRMViewportImpl::GetField()
@@ -496,6 +488,9 @@ inline void MultiplyMatrixVec4(D3DRMVECTOR4D& out, const D3DRMMATRIX4D& mat, con
 	out.w = mat[0][3] * vec.x + mat[1][3] * vec.y + mat[2][3] * vec.z + mat[3][3] * vec.w;
 }
 
+// D3DRM's screen vectors are homogeneous: x / w and y / w are device
+// coordinates and z / w is the depth, 0 at the front clipping plane and 1 at
+// the back one.
 HRESULT Direct3DRMViewportImpl::Transform(D3DRMVECTOR4D* screen, D3DVECTOR* world)
 {
 	D3DRMVECTOR4D worldVec = {world->x, world->y, world->z, 1.0f};
@@ -504,55 +499,37 @@ HRESULT Direct3DRMViewportImpl::Transform(D3DRMVECTOR4D* screen, D3DVECTOR* worl
 	MultiplyMatrixVec4(viewVec, m_viewMatrix, worldVec);
 	MultiplyMatrixVec4(projVec, m_projectionMatrix, viewVec);
 
-	*screen = projVec;
+	float w = projVec.w;
+	float invW = w != 0.0f ? 1.0f / w : 1.0f;
+	float screenX = FromNDC(projVec.x * invW, m_virtualWidth);
+	float screenY = FromNDC(-projVec.y * invW, m_virtualHeight); // y grows down the screen
+	float depth = projVec.z * invW;
 
-	float invW = 1.0f / projVec.w;
-	float ndcX = projVec.x * invW;
-	float ndcY = projVec.y * invW;
-
-	screen->x = FromNDC(ndcX, m_virtualWidth);
-	screen->y = FromNDC(-ndcY, m_virtualHeight); // Y-flip
-
-	// Undo perspective divide for screen-space coords
-	screen->x *= projVec.z;
-	screen->y *= projVec.w;
-
+	*screen = {screenX * w, screenY * w, depth * w, w};
 	return DD_OK;
 }
 
 HRESULT Direct3DRMViewportImpl::InverseTransform(D3DVECTOR* world, D3DRMVECTOR4D* screen)
 {
-	// Convert to screen coordinates
-	float screenX = screen->x / screen->z;
-	float screenY = screen->y / screen->w;
+	float w = screen->w != 0.0f ? screen->w : 1.0f;
+	float screenX = screen->x / w;
+	float screenY = screen->y / w;
+	float depth = screen->z / w;
 
-	// Convert screen coordinates to NDC
 	float ndcX = screenX / m_virtualWidth * 2.0f - 1.0f;
-	float ndcY = 1.0f - (screenY / m_virtualHeight) * 2.0f;
+	float ndcY = 1.0f - screenY / m_virtualHeight * 2.0f;
 
-	D3DRMVECTOR4D clipVec = {ndcX * screen->w, ndcY * screen->w, screen->z, screen->w};
-
-	D3DRMVECTOR4D viewVec;
-	MultiplyMatrixVec4(viewVec, m_inverseProjectionMatrix, clipVec);
+	// Undo the projection: depth = back / (back - front) * (1 - front / z).
+	float viewZ = m_front * m_back / (m_back - depth * (m_back - m_front));
+	D3DRMVECTOR4D viewVec =
+		{ndcX * viewZ / m_projectionMatrix[0][0], ndcY * viewZ / m_projectionMatrix[1][1], viewZ, 1.0f};
 
 	D3DRMMATRIX4D inverseViewMatrix;
 	D3DRMMatrixInvertOrthogonal(inverseViewMatrix, m_viewMatrix);
 
 	D3DRMVECTOR4D worldVec;
 	MultiplyMatrixVec4(worldVec, inverseViewMatrix, viewVec);
-
-	// Perspective divide
-	if (worldVec.w != 0.0f) {
-		world->x = worldVec.x / worldVec.w;
-		world->y = worldVec.y / worldVec.w;
-		world->z = worldVec.z / worldVec.w;
-	}
-	else {
-		world->x = worldVec.x;
-		world->y = worldVec.y;
-		world->z = worldVec.z;
-	}
-
+	*world = {worldVec.x, worldVec.y, worldVec.z};
 	return DD_OK;
 }
 
